@@ -11,6 +11,8 @@
 #include "Camera/CameraBase.h"
 #include "Config/XmlManagerWindow.h"
 #include <opencv2/opencv.hpp>
+#include <UI/NewTicketDialog.h>
+#include <UI/NewReportDialog.h>
 
 class Insulator_Zero_Value_Detection_Robot : public QMainWindow
 {
@@ -36,6 +38,7 @@ private slots:
 	void On_Setting_Click();
 	void captureCurrentWindow();
 	void On_SetFileName_Click();
+	void On_NewTicket_Click();
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;

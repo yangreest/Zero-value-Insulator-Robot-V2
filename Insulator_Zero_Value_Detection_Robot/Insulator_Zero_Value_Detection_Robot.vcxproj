@@ -103,6 +103,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="UI\NewReportDialog.cpp" />
+    <ClCompile Include="UI\NewTicketDialog.cpp" />
     <QtRcc Include="UI\Insulator_Zero_Value_Detection_Robot.qrc" />
     <QtUic Include="Config\XmlConfigManager.ui" />
     <QtMoc Include="UI\Insulator_Zero_Value_Detection_Robot.h" />
@@ -121,12 +123,16 @@
     <ClCompile Include="Tools\XInputHelper.cpp" />
     <ClCompile Include="UI\Insulator_Zero_Value_Detection_Robot.cpp" />
     <ClCompile Include="main.cpp" />
+    <QtUic Include="UI\NewReportDialog.ui" />
+    <QtUic Include="UI\NewTicketDialog.ui" />
     <QtUic Include="UI\Insulator_Zero_Value_Detection_Robot.ui" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Camera\CameraBase.h" />
     <ClInclude Include="Camera\XCloud.h" />
     <ClInclude Include="Config\ConfigManager.h" />
+    <QtMoc Include="UI\NewReportDialog.h" />
+    <QtMoc Include="UI\NewTicketDialog.h" />
     <QtMoc Include="Config\XmlManagerWindow.h" />
     <ClInclude Include="DeviceCom\IDeviceCom.h" />
     <ClInclude Include="DeviceCom\TcpClient.h" />
