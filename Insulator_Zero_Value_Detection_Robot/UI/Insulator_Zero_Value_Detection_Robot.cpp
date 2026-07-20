@@ -1,6 +1,5 @@
 #include "Insulator_Zero_Value_Detection_Robot.h"
 #include "Config/ConfigManager.h"
-
 #include "Log/ScanS_WriteLog.h"
 #include "Protocol/WHSDControlBoradProtocol.h"
 #include "Tools/Tools.h"
@@ -28,11 +27,13 @@ Insulator_Zero_Value_Detection_Robot::~Insulator_Zero_Value_Detection_Robot()
 void Insulator_Zero_Value_Detection_Robot::InitUI()
 {
 	showMaximized();
+	// 隐藏标题栏
+	setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
 
 	ui.label_22->setVisible(false);
-	ui.label_10->setVisible(false);
-	ui.label_11->setVisible(false);
-	ui.pushButton_3->setVisible(false);
+	//ui.label_10->setVisible(false);
+	//ui.label_11->setVisible(false);
+	//ui.pushButton_3->setVisible(false);
 }
 
 void Insulator_Zero_Value_Detection_Robot::InitParam()
@@ -127,10 +128,14 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 
 	connect(ui.pushButton, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click);
 	connect(ui.pushButton_2, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_TurnOffAll_Click);
-	connect(ui.pushButton_3, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click);// 零值检测
+	connect(ui.pBClose, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Close_Click);
+	connect(ui.pBInspection, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Inspection_Click);
+	connect(ui.pBticket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Ticket_Click);
+	connect(ui.pBSetting, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click);
+	connect(ui.pBreport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Report_Click);
 	connect(ui.pushButton_4, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Setting_Click);
-	connect(ui.pushButton_PS, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::captureCurrentWindow);
-	connect(ui.pushButton_SN, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click);
+	//connect(ui.pushButton_PS, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::captureCurrentWindow);
+	//connect(ui.pushButton_SN, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click);
 }
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState(int t, const ControllerState* p)
@@ -267,22 +272,22 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	{
 	case 0:
 	{
-		ui.label_11->setText("零值");
+		//ui.label_11->setText("零值");
 		break;
 	}
 	case 1:
 	{
-		ui.label_11->setText("正常");
+		//ui.label_11->setText("正常");
 		break;
 	}
 	case 2:
 	{
-		ui.label_11->setText("未知");
+		//ui.label_11->setText("未知");
 		break;
 	}
 	case 3:
 	{
-		ui.label_11->setText("未找到设备");
+		//ui.label_11->setText("未找到设备");
 		break;
 	}
 	default:
@@ -309,7 +314,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 	}
 	m_bLastButton = tp.buttons[5];
 
-	ui.label_20->setText(m_bLastButton ? "ON" : "OFF");
+	//ui.label_20->setText(m_bLastButton ? "ON" : "OFF");
 	if (m_nLastDir == 0)
 	{
 		switch (tp.dpad)
@@ -319,15 +324,14 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cUpAngle);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			ui.label_2->setText("上");
+			//ui.label_2->setText("上");
 			break;
 		}
 		case 2:
 		{
-			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01,
-				ui.checkBox->isChecked() ? 0 : m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01, 0x00);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			ui.label_2->setText("右");
+			//ui.label_2->setText("右");
 			break;
 		}
 		case 3:
@@ -335,21 +339,20 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cDownAngle);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			ui.label_2->setText("下");
+			//ui.label_2->setText("下");
 			break;
 		}
 		case 4:
 		{
-			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02,
-				ui.checkBox->isChecked() ? 0 : m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02, 0x00);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			ui.label_2->setText("左");
+			//ui.label_2->setText("左");
 			break;
 		}
 		case 0:
 		default:
 		{
-			ui.label_2->setText("");
+			//ui.label_2->setText("");
 			break;
 		}
 		}
@@ -497,8 +500,8 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 			{
 				//cv::imshow("RTSP Low Delay", frame);
 				// 将frame 转成QImage显示在lable上
-                QImage qImg = Mat2QImage(frame);
-                ui.label->setPixmap(QPixmap::fromImage(qImg));
+				QImage qImg = Mat2QImage(frame);
+				ui.label->setPixmap(QPixmap::fromImage(qImg));
 
 				//// 检查退出条件
 				//int key = cv::waitKey(1) & 0xFF;
@@ -528,53 +531,54 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 // 函数实现
 QImage Insulator_Zero_Value_Detection_Robot::Mat2QImage(const cv::Mat& mat)
 {
-    // 处理空矩阵
-    if (mat.empty()) {
-        return QImage();
-    }
+	// 处理空矩阵
+	if (mat.empty()) {
+		return QImage();
+	}
 
-    // 如果是彩色图像（BGR -> RGB）
-    if (mat.channels() == 3) {
-        cv::Mat rgb;
-        cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
-        return QImage((const unsigned char*)rgb.data, 
-                     rgb.cols, 
-                     rgb.rows, 
-                     rgb.step, 
-                     QImage::Format_RGB888);
-    }
-    // 如果是灰度图像
-    else if (mat.channels() == 1) {
-        return QImage((const unsigned char*)mat.data,
-                     mat.cols,
-                     mat.rows,
-                     mat.step,
-                     QImage::Format_Grayscale8); // Qt 5.13+ 支持，更早版本可用 Format_Indexed8
-    }
-    // 如果是RGBA图像
-    else if (mat.channels() == 4) {
-        cv::Mat rgba;
-        cv::cvtColor(mat, rgba, cv::COLOR_BGRA2RGBA);
-        return QImage((const unsigned char*)rgba.data,
-                     rgba.cols,
-                     rgba.rows,
-                     rgba.step,
-                     QImage::Format_RGBA8888);
-    }
-    
-    // 对于其他通道数，先转换为RGB
-    cv::Mat rgb;
-    if (mat.channels() == 3) {
-        cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
-    } else {
-        cv::cvtColor(mat, rgb, cv::COLOR_GRAY2RGB);
-    }
-    
-    return QImage((const unsigned char*)rgb.data,
-                 rgb.cols,
-                 rgb.rows,
-                 rgb.step,
-                 QImage::Format_RGB888);
+	// 如果是彩色图像（BGR -> RGB）
+	if (mat.channels() == 3) {
+		cv::Mat rgb;
+		cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
+		return QImage((const unsigned char*)rgb.data,
+			rgb.cols,
+			rgb.rows,
+			rgb.step,
+			QImage::Format_RGB888);
+	}
+	// 如果是灰度图像
+	else if (mat.channels() == 1) {
+		return QImage((const unsigned char*)mat.data,
+			mat.cols,
+			mat.rows,
+			mat.step,
+			QImage::Format_Grayscale8); // Qt 5.13+ 支持，更早版本可用 Format_Indexed8
+	}
+	// 如果是RGBA图像
+	else if (mat.channels() == 4) {
+		cv::Mat rgba;
+		cv::cvtColor(mat, rgba, cv::COLOR_BGRA2RGBA);
+		return QImage((const unsigned char*)rgba.data,
+			rgba.cols,
+			rgba.rows,
+			rgba.step,
+			QImage::Format_RGBA8888);
+	}
+
+	// 对于其他通道数，先转换为RGB
+	cv::Mat rgb;
+	if (mat.channels() == 3) {
+		cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
+	}
+	else {
+		cv::cvtColor(mat, rgb, cv::COLOR_GRAY2RGB);
+	}
+
+	return QImage((const unsigned char*)rgb.data,
+		rgb.cols,
+		rgb.rows,
+		rgb.step,
+		QImage::Format_RGB888);
 }
 
 void Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat(const CDeviceHeartBeat& b, int nComdeviceIndex)
@@ -599,6 +603,26 @@ void Insulator_Zero_Value_Detection_Robot::On_TurnOffAll_Click()
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
+void Insulator_Zero_Value_Detection_Robot::On_Close_Click()
+{
+	this->close();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_Inspection_Click()
+{
+	ui.stackedWidget_3->setCurrentIndex(0);
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_Ticket_Click()
+{
+    ui.stackedWidget_3->setCurrentIndex(1);
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click()
+{
+    ui.stackedWidget_3->setCurrentIndex(3);
+}
+
 void Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click()
 {
 	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
@@ -613,6 +637,11 @@ void Insulator_Zero_Value_Detection_Robot::On_Setting_Click()
 		xmlManagerWindow = new XmlManagerWindow();
 	}
 	xmlManagerWindow->show();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_Report_Click()
+{
+	ui.stackedWidget_3->setCurrentIndex(2);
 }
 
 void Insulator_Zero_Value_Detection_Robot::captureCurrentWindow()

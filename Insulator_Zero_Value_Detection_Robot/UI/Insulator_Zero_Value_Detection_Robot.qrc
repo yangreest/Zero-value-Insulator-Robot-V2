@@ -1,4 +1,6 @@
 <RCC>
-    <qresource prefix="Insulator_Zero_Value_Detection_Robot">
-    </qresource>
+  <qresource prefix="Insulator_Zero_Value_Detection_Robot"/>
+  <qresource prefix="ICON">
+    <file>Icon/lierda.png</file>
+  </qresource>
 </RCC>

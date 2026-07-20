@@ -105,7 +105,6 @@
   <ItemGroup>
     <QtRcc Include="UI\Insulator_Zero_Value_Detection_Robot.qrc" />
     <QtUic Include="Config\XmlConfigManager.ui" />
-    <QtUic Include="UI\Insulator_Zero_Value_Detection_Robot.ui" />
     <QtMoc Include="UI\Insulator_Zero_Value_Detection_Robot.h" />
     <ClCompile Include="Camera\CameraBase.cpp" />
     <ClCompile Include="Camera\XCloud.cpp" />
@@ -122,6 +121,7 @@
     <ClCompile Include="Tools\XInputHelper.cpp" />
     <ClCompile Include="UI\Insulator_Zero_Value_Detection_Robot.cpp" />
     <ClCompile Include="main.cpp" />
+    <QtUic Include="UI\Insulator_Zero_Value_Detection_Robot.ui" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Camera\CameraBase.h" />

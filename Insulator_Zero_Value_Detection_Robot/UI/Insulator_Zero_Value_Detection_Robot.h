@@ -27,6 +27,11 @@ private slots:
 	void On_timerInput_timeout();
 	void On_TurnOnAll_Click();
 	void On_TurnOffAll_Click();
+	void On_Close_Click();
+	void On_Inspection_Click();
+	void On_Ticket_Click();
+	void On_pBSetting_Click();
+	void On_Report_Click();
 	void On_ZeroTest_Click();
 	void On_Setting_Click();
 	void captureCurrentWindow();
