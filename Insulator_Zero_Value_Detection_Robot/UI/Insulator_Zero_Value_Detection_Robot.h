@@ -39,6 +39,15 @@ private slots:
 	void captureCurrentWindow();
 	void On_SetFileName_Click();
 	void On_NewTicket_Click();
+	void On_NewReport_Click();
+	void On_DeleteTicket_Click();
+	void On_ChangeTicket_Click();
+	void On_LoadTicket_Click();
+
+public slots:
+	void On_NewTicketSignal(CNewTicketConfig strTicket);
+	void On_ChangeTicketSignal(CNewTicketConfig strTicket);
+    void On_NewReportSignal(CNewReportConfig strReport);
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;
@@ -60,6 +69,9 @@ private:
 	void CallBack_SensorValue(CSensorData* p);
 
 	void savePixmap(const QPixmap& pixmap);
+
+	//自定义显示label
+	void SetVisibles(bool bVisible,int nSliceNum);
 
 	ControllerState m_memControllerState;
 
@@ -105,6 +117,9 @@ private:
 	QString	m_strFileName;
 
 	bool continueStreaming;
+
+	NewReportDialog* newReportDialog;
+	NewTicketDialog* newTicketDialog;
 
 public:
 	// 摄像头

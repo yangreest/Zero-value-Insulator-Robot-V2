@@ -1,6 +1,11 @@
 <RCC>
   <qresource prefix="Insulator_Zero_Value_Detection_Robot"/>
   <qresource prefix="ICON">
+    <file>Icon/screenshot-line.svg</file>
+    <file>Icon/放大.svg</file>
+    <file>Icon/录像.svg</file>
+    <file>Icon/全屏.svg</file>
+    <file>Icon/Exit.svg</file>
     <file>Icon/lierda.png</file>
   </qresource>
 </RCC>

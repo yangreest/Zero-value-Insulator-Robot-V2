@@ -4,6 +4,7 @@
 
 #include <QDialog>
 #include "ui_newreportdialog.h"
+#include "Config/ConfigManager.h"
 
 
 class NewReportDialog : public QDialog
@@ -13,13 +14,15 @@ class NewReportDialog : public QDialog
 public:
 	explicit NewReportDialog(QWidget* parent = nullptr);
 	~NewReportDialog();
+signals:
+	void NewReportSignal(CNewReportConfig strReport);
 
 private slots:
 	void on_buttonBox_accepted();
 	void on_buttonBox_rejected();
 
 private:
-	Ui::NewReportDialogClass* ui;
+	Ui::NewReportDialogClass ui;
 };
 
 #endif // NEWREPORTDIALOG_H

@@ -31,6 +31,24 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
 
 	ui.label_22->setVisible(false);
+	for (int i = 1; i <= 60; i++)
+	{
+		QString strName = QString("labelInside%1").arg(i);
+		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			//label->setVisible(false);
+			label->setStyleSheet("QLabel { border-radius: 8px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+		}
+		strName = QString("labelOutside%1").arg(i);
+		label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			//label->setVisible(false);
+			label->setStyleSheet("QLabel { border-radius: 8px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+		}
+	}
+	
 	//ui.label_10->setVisible(false);
 	//ui.label_11->setVisible(false);
 	//ui.pushButton_3->setVisible(false);
@@ -57,6 +75,10 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 		&Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState, this, std::placeholders::_1,
 		std::placeholders::_2));
 	m_pXInputHelper->BeginWork();
+
+
+	newTicketDialog = new NewTicketDialog();
+	newReportDialog = new NewReportDialog();
 
 	// 获取设备信息
 
@@ -134,9 +156,16 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pBSetting, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click);
 	connect(ui.pBreport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Report_Click);
 	connect(ui.pushButton_4, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Setting_Click);
-	connect(ui.pBNewTicket , &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click);
-	//connect(ui.pushButton_PS, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::captureCurrentWindow);
-	//connect(ui.pushButton_SN, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click);
+	connect(ui.pBNewTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click);
+	connect(ui.pBNewReport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewReport_Click);
+
+	connect(ui.pBDeleteTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click);
+	connect(ui.pBChangeTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicket_Click);
+	connect(ui.pBLoadTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click);
+
+	connect(newTicketDialog, &NewTicketDialog::NewTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal);
+	connect(newTicketDialog, &NewTicketDialog::ChangeTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal);
+	connect(newReportDialog, &NewReportDialog::NewReportSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewReportSignal);
 }
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState(int t, const ControllerState* p)
@@ -616,12 +645,12 @@ void Insulator_Zero_Value_Detection_Robot::On_Inspection_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_Ticket_Click()
 {
-    ui.stackedWidget_3->setCurrentIndex(1);
+	ui.stackedWidget_3->setCurrentIndex(1);
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click()
 {
-    ui.stackedWidget_3->setCurrentIndex(3);
+	ui.stackedWidget_3->setCurrentIndex(3);
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click()
@@ -674,6 +703,128 @@ void Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click()
 	QMessageBox::information(this, "提示", "文件保存失败");
 }
 
+void Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click()
+{
+	newTicketDialog->show();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_NewReport_Click()
+{
+
+	newReportDialog->show();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click()
+{
+	// 删除tableWidget_2选中的行
+	int row = ui.tableWidget_2->currentRow();
+	if (row >= 0) {
+		ui.tableWidget_2->removeRow(row);
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_ChangeTicket_Click()
+{
+	int row = ui.tableWidget_2->currentRow();
+	if (row < 0) {
+		return;
+	}
+
+	CNewTicketConfig m_memNewTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
+	newTicketDialog->SetTicket(m_memNewTicketConfig);
+	newTicketDialog->show();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
+{
+	int row = ui.tableWidget_2->currentRow();
+	if (row < 0)return;
+	CNewTicketConfig m_memNewTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
+
+	ui.labelTicketLineName->setText(QString::fromStdString(m_memNewTicketConfig.m_strLineName));
+	ui.labelPoleNumber->setText(QString::fromStdString(m_memNewTicketConfig.m_strPoleNumber));
+
+	bool visible = (m_memNewTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	SetVisibles(visible, m_memNewTicketConfig.m_wInsulatorSliceNum);
+
+	ui.radioButton_5->setVisible(false);
+	ui.radioButton_6->setVisible(false);
+	ui.radioButton_7->setVisible(false);
+	ui.radioButton_8->setVisible(false);
+	ui.radioButton_9->setVisible(false);
+	ui.radioButton_10->setVisible(false);
+	ui.comboBox->setVisible(false);
+
+	if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eOne)
+	{
+
+		ui.radioButton_5->setVisible(true);
+		ui.radioButton_6->setVisible(true);
+		ui.radioButton_7->setVisible(true);
+		ui.radioButton_7->setText("A相");
+		ui.radioButton_6->setText("B相");
+        ui.radioButton_5->setText("C相");
+	}
+	else if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eTwo)
+    {
+        ui.radioButton_5->setVisible(true);
+        ui.radioButton_6->setVisible(true);
+        ui.radioButton_7->setVisible(true);
+		ui.radioButton_8->setVisible(true);
+		ui.radioButton_9->setVisible(true);
+		ui.radioButton_10->setVisible(true);
+        ui.radioButton_7->setText("右A");
+        ui.radioButton_6->setText("右B");
+        ui.radioButton_5->setText("右C");
+    }
+    else if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eFour)
+    {
+		ui.comboBox->setVisible(true);
+    }
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfig strTicket)
+{
+	// 更新tableWidget_2选中行的数据
+	int currentRow = ui.tableWidget_2->currentRow();
+
+	ui.tableWidget_2->setItem(currentRow, 0, new QTableWidgetItem(currentRow + 1));
+	ui.tableWidget_2->item(currentRow, 0)->setData(Qt::UserRole, QVariant::fromValue(strTicket));
+	ui.tableWidget_2->setItem(currentRow, 1, new QTableWidgetItem(QString::fromStdString(strTicket.m_strLineName)));
+	ui.tableWidget_2->setItem(currentRow, 2, new QTableWidgetItem(QString::fromStdString(strTicket.m_strPoleNumber)));
+	ui.tableWidget_2->setItem(currentRow, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(strTicket.m_eBunchType))));
+	ui.tableWidget_2->setItem(currentRow, 4, new QTableWidgetItem(QString::number(strTicket.m_wInsulatorSliceNum)));
+	ui.tableWidget_2->setItem(currentRow, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(strTicket.m_eLoopType))));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig strReport)
+{
+	int rowCount = ui.tableWidget_3->rowCount();
+	ui.tableWidget_3->insertRow(rowCount);
+
+	ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(rowCount + 1));
+	ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strReport));
+	ui.tableWidget_3->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strReport.m_strReportId)));
+	ui.tableWidget_3->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionUnit)));
+	ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionPerson)));
+	ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strReport.m_strWorkPlace)));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig config)
+{
+	// 在tableWidget_2中新增一行
+	int rowCount = ui.tableWidget_2->rowCount();
+	ui.tableWidget_2->insertRow(rowCount);
+	ui.tableWidget_2->setItem(rowCount, 0, new QTableWidgetItem(rowCount + 1));
+	ui.tableWidget_2->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(config));
+	ui.tableWidget_2->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(config.m_strLineName)));
+	ui.tableWidget_2->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(config.m_strPoleNumber)));
+	ui.tableWidget_2->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(config.m_eBunchType))));
+	ui.tableWidget_2->setItem(rowCount, 4, new QTableWidgetItem(QString::number(config.m_wInsulatorSliceNum)));
+	ui.tableWidget_2->setItem(rowCount, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(config.m_eLoopType))));
+	return;
+}
+
 // 保存截图到文件
 void Insulator_Zero_Value_Detection_Robot::savePixmap(const QPixmap& pixmap)
 {
@@ -700,6 +851,46 @@ void Insulator_Zero_Value_Detection_Robot::savePixmap(const QPixmap& pixmap)
 		}
 		else {
 			QMessageBox::warning(this, "错误", "截图保存失败");
+		}
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::SetVisibles(bool bVisible, int nSliceNum)
+{
+	ui.labelInside->setVisible(bVisible);
+	ui.labelOutside->setVisible(bVisible);
+
+	for (int i = 1; i <= 60; i++)
+	{
+		QString strName = QString("labelInside%1").arg(i);
+		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			label->setVisible(false);
+		}
+		strName = QString("labelOutside%1").arg(i);
+		label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			label->setVisible(false);
+		}
+	}
+
+	// 根据字符串找到对应的lable控件
+	for (int i = 1; i <= nSliceNum; i++)
+	{
+		QString strName = QString("labelInside%1").arg(i);
+		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			label->setVisible(true);
+		}
+		if (!bVisible) continue;
+		strName = QString("labelOutside%1").arg(i);
+		label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			label->setVisible(true);
 		}
 	}
 }
