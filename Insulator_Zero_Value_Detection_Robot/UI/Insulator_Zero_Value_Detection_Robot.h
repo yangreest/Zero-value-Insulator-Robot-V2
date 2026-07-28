@@ -43,6 +43,8 @@ private slots:
 	void On_DeleteTicket_Click();
 	void On_ChangeTicket_Click();
 	void On_LoadTicket_Click();
+	void On_Test_Click();
+	void On_Retest_Click();
 
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
@@ -117,6 +119,8 @@ private:
 	QString	m_strFileName;
 
 	bool continueStreaming;
+
+	QLabel* overlayLabel;
 
 	NewReportDialog* newReportDialog;
 	NewTicketDialog* newTicketDialog;

@@ -11,7 +11,7 @@
 #include <QFileDialog.h>
 
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
-	: QMainWindow(parent)
+	: QMainWindow(parent), overlayLabel(nullptr)
 {
 	ui.setupUi(this);
 	InitParam();
@@ -31,6 +31,9 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
 
 	ui.label_22->setVisible(false);
+
+
+
 	for (int i = 1; i <= 60; i++)
 	{
 		QString strName = QString("labelInside%1").arg(i);
@@ -38,14 +41,14 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		if (label)
 		{
 			//label->setVisible(false);
-			label->setStyleSheet("QLabel { border-radius: 8px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
 		}
 		strName = QString("labelOutside%1").arg(i);
 		label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 		if (label)
 		{
 			//label->setVisible(false);
-			label->setStyleSheet("QLabel { border-radius: 8px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
 		}
 	}
 	
@@ -166,6 +169,9 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(newTicketDialog, &NewTicketDialog::NewTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal);
 	connect(newTicketDialog, &NewTicketDialog::ChangeTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal);
 	connect(newReportDialog, &NewReportDialog::NewReportSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewReportSignal);
+	
+	connect(ui.pBTest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Test_Click);
+	connect(ui.pBRetest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Retest_Click);
 }
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState(int t, const ControllerState* p)
@@ -641,16 +647,19 @@ void Insulator_Zero_Value_Detection_Robot::On_Close_Click()
 void Insulator_Zero_Value_Detection_Robot::On_Inspection_Click()
 {
 	ui.stackedWidget_3->setCurrentIndex(0);
+	if(overlayLabel) overlayLabel->show();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Ticket_Click()
 {
 	ui.stackedWidget_3->setCurrentIndex(1);
+	if(overlayLabel) overlayLabel->hide();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click()
 {
 	ui.stackedWidget_3->setCurrentIndex(3);
+	if (overlayLabel) overlayLabel->hide();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click()
@@ -672,6 +681,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Setting_Click()
 void Insulator_Zero_Value_Detection_Robot::On_Report_Click()
 {
 	ui.stackedWidget_3->setCurrentIndex(2);
+	if (overlayLabel) overlayLabel->hide();
 }
 
 void Insulator_Zero_Value_Detection_Robot::captureCurrentWindow()
@@ -747,40 +757,56 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 	bool visible = (m_memNewTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 	SetVisibles(visible, m_memNewTicketConfig.m_wInsulatorSliceNum);
 
-	ui.radioButton_5->setVisible(false);
-	ui.radioButton_6->setVisible(false);
-	ui.radioButton_7->setVisible(false);
-	ui.radioButton_8->setVisible(false);
-	ui.radioButton_9->setVisible(false);
-	ui.radioButton_10->setVisible(false);
-	ui.comboBox->setVisible(false);
+    ui.comboBox->clear();
 
 	if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eOne)
 	{
-
-		ui.radioButton_5->setVisible(true);
-		ui.radioButton_6->setVisible(true);
-		ui.radioButton_7->setVisible(true);
-		ui.radioButton_7->setText("A相");
-		ui.radioButton_6->setText("B相");
-        ui.radioButton_5->setText("C相");
+		QStringList list;
+		list << "A相" << "B相" << "C相";
+        ui.comboBox->addItems(list);
 	}
 	else if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eTwo)
     {
-        ui.radioButton_5->setVisible(true);
-        ui.radioButton_6->setVisible(true);
-        ui.radioButton_7->setVisible(true);
-		ui.radioButton_8->setVisible(true);
-		ui.radioButton_9->setVisible(true);
-		ui.radioButton_10->setVisible(true);
-        ui.radioButton_7->setText("右A");
-        ui.radioButton_6->setText("右B");
-        ui.radioButton_5->setText("右C");
+        QStringList list;
+        list << "右A" << "右B" << "右C"<< "左A" << "左B" << "左C";
+		ui.comboBox->addItems(list);
     }
     else if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eFour)
     {
-		ui.comboBox->setVisible(true);
+		QStringList list;
+		list << "左上A" << "左上B" << "左上C" << "左下A" << "左下B" << "左下C" << "右上A" << "右上B" << "右上C" << "右下A" << "右下B" << "右下C";
+		ui.comboBox->addItems(list);
     }
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
+{
+	if (overlayLabel == nullptr)
+	{
+		overlayLabel = new QLabel(this); // 父对象设置为本窗口！重点
+	}
+		// 主窗口已有其他按钮、表格等控件
+	// ===== 创建叠加Label =====
+		
+		
+		overlayLabel->setWindowFlags(Qt::Widget);
+		overlayLabel->setStyleSheet("background-color:rgba(0,0,0,20);color:white;font-size:20px;");
+		overlayLabel->setText("当前检测结果：3385MΩ");
+		overlayLabel->setMinimumWidth(250);
+
+		// 铺满整个窗口，也可以自定义大小位置
+		// 显示在label_9 右下角，获取绝对的坐标
+		overlayLabel->move(ui.label_9->mapToGlobal(QPoint(ui.label_9->width() - overlayLabel->width() , ui.label_9->height() - overlayLabel->height())));
+		//overlayLabel->setGeometry(ui.label_9->geometry().x(), ui.label_9->geometry().y(), 50, 200);
+
+		overlayLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+		// 默认显示
+		overlayLabel->show();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
+{
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfig strTicket)
