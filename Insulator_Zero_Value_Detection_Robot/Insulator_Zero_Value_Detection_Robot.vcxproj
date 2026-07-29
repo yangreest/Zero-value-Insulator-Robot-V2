@@ -106,12 +106,10 @@
     <ClCompile Include="UI\NewReportDialog.cpp" />
     <ClCompile Include="UI\NewTicketDialog.cpp" />
     <QtRcc Include="UI\Insulator_Zero_Value_Detection_Robot.qrc" />
-    <QtUic Include="Config\XmlConfigManager.ui" />
     <QtMoc Include="UI\Insulator_Zero_Value_Detection_Robot.h" />
     <ClCompile Include="Camera\CameraBase.cpp" />
     <ClCompile Include="Camera\XCloud.cpp" />
     <ClCompile Include="Config\ConfigManager.cpp" />
-    <ClCompile Include="Config\XmlManagerWindow.cpp" />
     <ClCompile Include="DeviceCom\IDeviceCom.cpp" />
     <ClCompile Include="DeviceCom\TcpClient.cpp" />
     <ClCompile Include="Log\ScanS_FC.cpp" />
@@ -133,7 +131,6 @@
     <ClInclude Include="Config\ConfigManager.h" />
     <QtMoc Include="UI\NewReportDialog.h" />
     <QtMoc Include="UI\NewTicketDialog.h" />
-    <QtMoc Include="Config\XmlManagerWindow.h" />
     <ClInclude Include="DeviceCom\IDeviceCom.h" />
     <ClInclude Include="DeviceCom\TcpClient.h" />
     <ClInclude Include="Log\ScanS_FC.h" />

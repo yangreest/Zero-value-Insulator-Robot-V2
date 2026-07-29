@@ -113,6 +113,8 @@ class CConfigManager
 public:
 	CControlBoardConfig m_memControlBoardConfig;
 	CCameraConfig m_memCCameraConfig;
+	std::vector<CNewTicketConfig> m_vecNewTicketConfig;
+	std::vector<CNewReportConfig> m_vecNewReportConfig;
 	void Read(const std::string& filePath);
 	void Write(const std::string& filePath);
 };
