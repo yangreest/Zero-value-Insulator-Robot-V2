@@ -41,8 +41,8 @@
     <QtBuildConfig>debug</QtBuildConfig>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'" Label="QtSettings">
-    <QtInstall>6.9.1_msvc2022_64</QtInstall>
-    <QtModules>core;gui;widgets</QtModules>
+    <QtInstall>6.10_msvc2022_64</QtInstall>
+    <QtModules>core;gui;widgets;charts</QtModules>
     <QtBuildConfig>release</QtBuildConfig>
   </PropertyGroup>
   <Target Name="QtMsBuildNotFound" BeforeTargets="CustomBuild;ClCompile" Condition="!Exists('$(QtMsBuild)\qt.targets') or !Exists('$(QtMsBuild)\qt.props')">
@@ -103,6 +103,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="UI\contentwidget.cpp" />
+    <ClCompile Include="UI\modeldatamodel.cpp" />
+    <ClCompile Include="UI\modeldatawidget.cpp" />
     <ClCompile Include="UI\NewReportDialog.cpp" />
     <ClCompile Include="UI\NewTicketDialog.cpp" />
     <QtRcc Include="UI\Insulator_Zero_Value_Detection_Robot.qrc" />
@@ -129,6 +132,9 @@
     <ClInclude Include="Camera\CameraBase.h" />
     <ClInclude Include="Camera\XCloud.h" />
     <ClInclude Include="Config\ConfigManager.h" />
+    <QtMoc Include="UI\modeldatawidget.h" />
+    <QtMoc Include="UI\modeldatamodel.h" />
+    <QtMoc Include="UI\contentwidget.h" />
     <QtMoc Include="UI\NewReportDialog.h" />
     <QtMoc Include="UI\NewTicketDialog.h" />
     <ClInclude Include="DeviceCom\IDeviceCom.h" />

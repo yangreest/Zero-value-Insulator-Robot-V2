@@ -91,6 +91,30 @@ public:
 		}
 	};
 
+	static const LoopType m_vecLoopType(const std::string& strLoopType)
+	{ 
+        if (strLoopType == "同塔单回")
+            return LoopType::eOne;
+        else if (strLoopType == "同塔双回")
+            return LoopType::eTwo;
+        else if (strLoopType == "同塔四回")
+            return LoopType::eFour;
+        else
+            return LoopType::eOne;
+	};
+
+	static const BunchType m_vecBunchType(const std::string& strBunchType)
+	{
+		if (strBunchType == "单联")
+			return BunchType::eSingle;
+		else if (strBunchType == "双联")
+			return BunchType::eDouble;
+		else
+			return BunchType::eSingle;
+	};
+	// 增加一个戳
+	std::string m_strTicketId;  // 唯一标识符
+
 	//线路名称
 	std::string m_strLineName;
 	// 杆塔号
@@ -106,7 +130,6 @@ public:
 	// 备注信息
 	std::string m_strRemark;
 };
-
 
 class CConfigManager
 {

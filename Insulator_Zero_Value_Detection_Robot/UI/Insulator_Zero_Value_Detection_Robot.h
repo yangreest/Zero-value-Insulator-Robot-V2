@@ -9,10 +9,13 @@
 #include "Protocol/WHSDControlBoradProtocol.h"
 #include "Tools/XInputHelper.h"
 #include "Camera/CameraBase.h"
-#include "Config/XmlManagerWindow.h"
+//#include "Config/XmlManagerWindow.h"
 #include <opencv2/opencv.hpp>
 #include <UI/NewTicketDialog.h>
 #include <UI/NewReportDialog.h>
+
+#include "UI/contentwidget.h"
+#include "UI/modeldatawidget.h"
 
 class Insulator_Zero_Value_Detection_Robot : public QMainWindow
 {
@@ -27,7 +30,7 @@ public:
 private slots:
 	void On_timer_timeout();
 	void On_timerInput_timeout();
-	void On_TurnOnAll_Click();
+	void On_TurnOnAll_Click(bool bState);
 	void On_TurnOffAll_Click();
 	void On_Close_Click();
 	void On_Inspection_Click();
@@ -72,6 +75,9 @@ private:
 
 	void savePixmap(const QPixmap& pixmap);
 
+	std::string GenerateUniqueTicketId();
+	std::string GenerateUniqueReportId();
+
 	//自定义显示label
 	void SetVisibles(bool bVisible,int nSliceNum);
 
@@ -87,7 +93,7 @@ private:
 
 	CWHSDControlBoardProtocol* m_pWHSDControlBoardProtocol;
 
-	XmlManagerWindow* xmlManagerWindow;
+	//XmlManagerWindow* xmlManagerWindow;
 
 	std::mutex m_mutexDeviceInfoLock;
 
@@ -124,6 +130,8 @@ private:
 
 	NewReportDialog* newReportDialog;
 	NewTicketDialog* newTicketDialog;
+
+	ContentWidget* m_activeWidget = nullptr;
 
 public:
 	// 摄像头

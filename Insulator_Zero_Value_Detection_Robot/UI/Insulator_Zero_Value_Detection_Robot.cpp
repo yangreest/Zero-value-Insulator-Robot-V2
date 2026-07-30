@@ -9,6 +9,7 @@
 #include <QMessageBox.h>
 #include <QDateTime>
 #include <QFileDialog.h>
+#include <random>
 
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
 	: QMainWindow(parent), overlayLabel(nullptr)
@@ -31,8 +32,8 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
 
 	ui.label_22->setVisible(false);
-
-
+	ui.labelTicketLineName->setText("");
+	ui.labelPoleNumber->setText("");
 
 	for (int i = 1; i <= 60; i++)
 	{
@@ -52,9 +53,44 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		}
 	}
 	
-	//ui.label_10->setVisible(false);
-	//ui.label_11->setVisible(false);
-	//ui.pushButton_3->setVisible(false);
+	for (auto& strNewTicketConfig : m_pConfig->m_vecNewTicketConfig)
+	{
+		int rowCount = ui.tableWidget_2->rowCount();
+		ui.tableWidget_2->insertRow(rowCount);
+		ui.tableWidget_2->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
+		ui.tableWidget_2->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strNewTicketConfig));
+		ui.tableWidget_2->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strNewTicketConfig.m_strLineName)));
+		ui.tableWidget_2->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strNewTicketConfig.m_strPoleNumber)));
+		ui.tableWidget_2->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(strNewTicketConfig.m_eBunchType))));
+		ui.tableWidget_2->setItem(rowCount, 4, new QTableWidgetItem(QString::number(strNewTicketConfig.m_wInsulatorSliceNum)));
+		ui.tableWidget_2->setItem(rowCount, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(strNewTicketConfig.m_eLoopType))));
+	}
+
+	for (auto& strNewReportConfig : m_pConfig->m_vecNewReportConfig)
+	{
+        int rowCount = ui.tableWidget_3->rowCount();
+		ui.tableWidget_3->insertRow(rowCount);
+
+		ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
+		ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strNewReportConfig));
+		ui.tableWidget_3->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strNewReportConfig.m_strReportId)));
+		ui.tableWidget_3->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strNewReportConfig.m_strDetectionUnit)));
+		ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strNewReportConfig.m_strDetectionPerson)));
+		ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strNewReportConfig.m_strWorkPlace)));
+	}
+
+	m_activeWidget = new ModelDataWidget(ui.widget);
+	m_activeWidget->load();
+	m_activeWidget->resize(ui.widget->size());
+	m_activeWidget->setVisible(true);
+
+	// 设置表格表头填充
+	ui.tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+	// 或者只拉伸最后一列
+	
+	// 如果有其他表格也需要设置
+	ui.tableWidget_2->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+	ui.tableWidget_3->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 }
 
 void Insulator_Zero_Value_Detection_Robot::InitParam()
@@ -627,10 +663,17 @@ void Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat(const CDevic
 }
 
 
-void Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click()
+void Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click(bool bState)
 {
-	auto cmds = CWHSDControlBoardProtocol::TurnOnAll();
-	m_pComDevice->Write(cmds.data(), cmds.size());
+	if (!bState)
+	{
+        On_TurnOffAll_Click();
+	}
+	else
+	{
+		auto cmds = CWHSDControlBoardProtocol::TurnOnAll();
+		m_pComDevice->Write(cmds.data(), cmds.size());
+	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_TurnOffAll_Click()
@@ -671,11 +714,11 @@ void Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_Setting_Click()
 {
-	if (xmlManagerWindow == nullptr)
-	{
-		xmlManagerWindow = new XmlManagerWindow();
-	}
-	xmlManagerWindow->show();
+	//if (xmlManagerWindow == nullptr)
+	//{
+	//	xmlManagerWindow = new XmlManagerWindow();
+	//}
+	//xmlManagerWindow->show();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Report_Click()
@@ -814,7 +857,7 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfi
 	// 更新tableWidget_2选中行的数据
 	int currentRow = ui.tableWidget_2->currentRow();
 
-	ui.tableWidget_2->setItem(currentRow, 0, new QTableWidgetItem(currentRow + 1));
+	ui.tableWidget_2->setItem(currentRow, 0, new QTableWidgetItem(QString::number(currentRow + 1)));
 	ui.tableWidget_2->item(currentRow, 0)->setData(Qt::UserRole, QVariant::fromValue(strTicket));
 	ui.tableWidget_2->setItem(currentRow, 1, new QTableWidgetItem(QString::fromStdString(strTicket.m_strLineName)));
 	ui.tableWidget_2->setItem(currentRow, 2, new QTableWidgetItem(QString::fromStdString(strTicket.m_strPoleNumber)));
@@ -825,29 +868,37 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfi
 
 void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig strReport)
 {
+	strReport.m_strReportId = GenerateUniqueReportId();
 	int rowCount = ui.tableWidget_3->rowCount();
 	ui.tableWidget_3->insertRow(rowCount);
 
-	ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(rowCount + 1));
+	ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
 	ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strReport));
 	ui.tableWidget_3->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strReport.m_strReportId)));
 	ui.tableWidget_3->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionUnit)));
 	ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionPerson)));
 	ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strReport.m_strWorkPlace)));
+
+    m_pConfig->m_vecNewReportConfig.push_back(strReport);
+    m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig config)
 {
+	config.m_strTicketId = GenerateUniqueTicketId();  // 设置唯一 ID
 	// 在tableWidget_2中新增一行
 	int rowCount = ui.tableWidget_2->rowCount();
 	ui.tableWidget_2->insertRow(rowCount);
-	ui.tableWidget_2->setItem(rowCount, 0, new QTableWidgetItem(rowCount + 1));
+	ui.tableWidget_2->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
 	ui.tableWidget_2->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(config));
 	ui.tableWidget_2->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(config.m_strLineName)));
 	ui.tableWidget_2->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(config.m_strPoleNumber)));
 	ui.tableWidget_2->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(config.m_eBunchType))));
 	ui.tableWidget_2->setItem(rowCount, 4, new QTableWidgetItem(QString::number(config.m_wInsulatorSliceNum)));
 	ui.tableWidget_2->setItem(rowCount, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(config.m_eLoopType))));
+	
+	m_pConfig->m_vecNewTicketConfig.push_back(config);
+    m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	return;
 }
 
@@ -879,6 +930,30 @@ void Insulator_Zero_Value_Detection_Robot::savePixmap(const QPixmap& pixmap)
 			QMessageBox::warning(this, "错误", "截图保存失败");
 		}
 	}
+}
+
+std::string Insulator_Zero_Value_Detection_Robot::GenerateUniqueTicketId()
+{
+	auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dis(10000, 99999);  // 5位随机数
+
+	return "TICKET_" + std::to_string(now) + "_" + std::to_string(dis(gen));
+}
+
+std::string Insulator_Zero_Value_Detection_Robot::GenerateUniqueReportId()
+{
+	auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dis(10000, 99999);  // 5位随机数
+
+	return "REPORT" + std::to_string(now) + "_" + std::to_string(dis(gen));
 }
 
 void Insulator_Zero_Value_Detection_Robot::SetVisibles(bool bVisible, int nSliceNum)

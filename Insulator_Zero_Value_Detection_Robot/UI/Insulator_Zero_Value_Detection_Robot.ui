@@ -1020,14 +1020,14 @@ border :none;
 	border-radius:8px;
 }
 QPushButton:checked {
-    background-color: #F59E0B;
+    background-color: #4d2a02;
     color: #FFFFFF;
 	border-radius:8px;
 }
 </string>
              </property>
              <property name="text">
-              <string>总电源开</string>
+              <string>总电源</string>
              </property>
              <property name="checkable">
               <bool>true</bool>
@@ -1328,7 +1328,7 @@ QTabBar::tab:disabled {
 }</string>
                 </property>
                 <property name="currentIndex">
-                 <number>0</number>
+                 <number>1</number>
                 </property>
                 <widget class="QWidget" name="tabWidget_2Page1">
                  <attribute name="title">
@@ -4155,7 +4155,11 @@ QTabBar::tab:disabled {
                    <number>2</number>
                   </property>
                   <item>
-                   <widget class="QWidget" name="widget" native="true"/>
+                   <widget class="QWidget" name="widget" native="true">
+                    <property name="styleSheet">
+                     <string notr="true">background-color: rgb(50, 109, 66);</string>
+                    </property>
+                   </widget>
                   </item>
                  </layout>
                 </widget>
@@ -5830,6 +5834,5 @@ border :none;
  <connections/>
  <buttongroups>
   <buttongroup name="buttonGroup_2"/>
-  <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>
