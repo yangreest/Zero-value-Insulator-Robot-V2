@@ -41,14 +41,12 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 		if (label)
 		{
-			//label->setVisible(false);
 			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
 		}
 		strName = QString("labelOutside%1").arg(i);
 		label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 		if (label)
 		{
-			//label->setVisible(false);
 			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
 		}
 	}
@@ -70,7 +68,6 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	{
         int rowCount = ui.tableWidget_3->rowCount();
 		ui.tableWidget_3->insertRow(rowCount);
-
 		ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
 		ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strNewReportConfig));
 		ui.tableWidget_3->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strNewReportConfig.m_strReportId)));
@@ -208,6 +205,15 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	
 	connect(ui.pBTest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Test_Click);
 	connect(ui.pBRetest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Retest_Click);
+
+	connect(ui.pushButton_14, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_forword_Click);// 前进
+    connect(ui.pushButton_15, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_backward_Click);
+    connect(ui.pushButton_26, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_stop_Click);
+	connect(ui.pushButton_17, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle1_Click);
+	connect(ui.pushButton_25, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle2_Click);
+	connect(ui.pushButton_27, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle3_Click);
+	connect(ui.pushButton_28, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_mear_Click);
+
 }
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState(int t, const ControllerState* p)
@@ -222,17 +228,17 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	{
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 2, 0);
 
-		m_pComDevice->Write(cmds.data(), cmds.size());
+		//m_pComDevice->Write(cmds.data(), cmds.size());
 
 
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 3, 0);
 
-		m_pComDevice->Write(cmds.data(), cmds.size());
+		//m_pComDevice->Write(cmds.data(), cmds.size());
 
 
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 4, 0);
 
-		m_pComDevice->Write(cmds.data(), cmds.size());
+		//m_pComDevice->Write(cmds.data(), cmds.size());
 	}
 
 	ui.label_34->setText(QString::number(m_nHeartBeatCount));
@@ -401,7 +407,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 		}
 		case 2:
 		{
-			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01, 0x00);
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01, m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			//ui.label_2->setText("右");
 			break;
@@ -416,7 +422,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 		}
 		case 4:
 		{
-			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02, 0x00);
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02, m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			//ui.label_2->setText("左");
 			break;
@@ -850,6 +856,52 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 {
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_forword_Click()
+{
+	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01, 0x00);
+	m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_backward_Click()
+{
+	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02, 0x00);
+	m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_neddle1_Click()
+{
+	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+		m_pConfig->m_memControlBoardConfig.m_cUpAngle);
+	m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_neddle2_Click()
+{
+    auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+		m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
+    m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_neddle3_Click()
+{
+    auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+		m_pConfig->m_memControlBoardConfig.m_cDownAngle);
+    m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_stop_Click()
+{
+	auto cmds = CWHSDControlBoardProtocol::DeviceStop(0x01);
+	m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_mear_Click()
+{
+	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+
+	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfig strTicket)

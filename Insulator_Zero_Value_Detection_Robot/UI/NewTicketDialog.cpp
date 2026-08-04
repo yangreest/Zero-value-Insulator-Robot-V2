@@ -5,6 +5,8 @@ NewTicketDialog::NewTicketDialog(QWidget* parent)
 	:QWidget(parent), m_bIsNewTicket(true)
 {
 	ui.setupUi(this);
+	// 界面置于最前
+    setWindowFlags(Qt::WindowStaysOnTopHint);
 
 	connect(ui.pushButton, &QPushButton::clicked, this, &NewTicketDialog::on_buttonBox_accepted);
 	connect(ui.pushButton_2, &QPushButton::clicked, this, &NewTicketDialog::on_buttonBox_rejected);

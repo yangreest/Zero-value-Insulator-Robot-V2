@@ -12,8 +12,9 @@ public:
 	uint16_t m_wPort;
 	uint16_t m_wDeviceHeartBeat;
 	bool m_bFactoryMode;
-	uint8_t m_cUpAngle;
-	uint8_t m_cDownAngle;
+	uint8_t m_cUpAngle; // 探针1的位置
+	uint8_t m_cDownAngle; // 探针待机的位置
+    uint8_t m_cUpAngle2;//探针2的位置
 	uint8_t m_cWalkMotorSpeed;
 };
 

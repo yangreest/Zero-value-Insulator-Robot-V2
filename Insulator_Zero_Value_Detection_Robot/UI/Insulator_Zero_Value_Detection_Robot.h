@@ -49,6 +49,14 @@ private slots:
 	void On_Test_Click();
 	void On_Retest_Click();
 
+	void On_forword_Click();
+    void On_backward_Click();
+	void On_neddle1_Click();
+	void On_neddle2_Click();
+	void On_neddle3_Click();
+	void On_stop_Click();
+	void On_mear_Click();
+
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
 	void On_ChangeTicketSignal(CNewTicketConfig strTicket);

@@ -302,7 +302,7 @@ bool CWHSDControlBoardProtocol::Parse()
 					}
 					case 0x11:
 						{
-							//传感器指令反馈
+						//传感器指令反馈
 						if (m_vectorCmdData.size() >= 3)
 						{
 							switch (m_vectorCmdData[1])
@@ -329,6 +329,11 @@ bool CWHSDControlBoardProtocol::Parse()
 						}
 							break;
 						}
+					case 0x1F:
+					{
+
+					}
+					break;
 					default:
 					{
 						break;
@@ -472,6 +477,11 @@ void CWHSDControlBoardProtocol::Answer()
 		needSendData = GetCmdData(0x06, { 0x01 });
 		break;
 	}
+	case 0x0F:
+	{
+		needSendData = GetCmdData(0x0f, { 0x01 });
+		break;
+	}
 	default:
 	{
 		return;
@@ -595,6 +605,7 @@ void CWHSDControlBoardProtocol::SendData(uint8_t* p, int len)
 	}
 }
 
+// 心跳线程
 void CWHSDControlBoardProtocol::LoopSendHeartBeat()
 {
 	//return;
@@ -604,7 +615,7 @@ void CWHSDControlBoardProtocol::LoopSendHeartBeat()
 		if (!m_bPauseHeartBeat)
 		{
 			auto needSendData = GetCmdData(0x00, { m_cPackNumber });
-			SendData(needSendData.data(), needSendData.size());
+			//SendData(needSendData.data(), needSendData.size());
 		}
 	}
 }

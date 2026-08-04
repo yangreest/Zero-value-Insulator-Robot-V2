@@ -5,6 +5,8 @@ NewReportDialog::NewReportDialog(QWidget* parent) :
 	QDialog(parent)
 {
 	ui.setupUi(this);
+	// 界面置于最前
+	setWindowFlags(Qt::WindowStaysOnTopHint);
     connect(ui.pushButton, &QPushButton::clicked, this, &NewReportDialog::on_buttonBox_accepted);
 
 }
