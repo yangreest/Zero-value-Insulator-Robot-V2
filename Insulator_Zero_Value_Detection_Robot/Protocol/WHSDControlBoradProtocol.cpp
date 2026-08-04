@@ -232,14 +232,14 @@ bool CWHSDControlBoardProtocol::Parse()
 				{
 					m_cPackNumber = m_vectorDataBuffer[3];
 					m_vectorCmdData.resize(packLen - 8);
-					auto cmd = m_vectorDataBuffer[4];
+					m_cCmd = m_vectorDataBuffer[4];
 					memcpy(m_vectorCmdData.data(), m_vectorDataBuffer.data() + 5, packLen - 8);
 					Erase(packLen);
 					if (m_function_Answer != nullptr)
 					{
 						Answer();
 					}
-					switch (cmd)
+					switch (m_cCmd)
 					{
 					case 0:
 					{
