@@ -29,6 +29,7 @@ private:
 	Ui::NewTicketDialogClass ui;
 
 	bool m_bIsNewTicket;
+	CNewTicketConfig m_strTicket;
 };
 
 #endif // NEWTICKETDIALOG_H

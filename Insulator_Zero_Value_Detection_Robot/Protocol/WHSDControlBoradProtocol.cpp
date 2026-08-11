@@ -164,6 +164,7 @@ CWHSDControlBoardProtocol::CWHSDControlBoardProtocol(uint16_t wHeartBeatTime)
 {
 	m_cPackNumber = 0;
 	m_function_Answer = nullptr;
+	m_function_ZeroDataCallBack = nullptr;
 	m_function_DeviceHeartBeat = nullptr;
 	m_cCmd = 0;
 	m_nIsNeedExit = false;
@@ -300,8 +301,42 @@ bool CWHSDControlBoardProtocol::Parse()
 						//}
 						break;
 					}
-					case 0x11:
+					case 0x0f:
+					{
+						// 数据缓冲区 Byte2~Byte9：buffer[contentOffset+2] ~ buffer[contentOffset+9]
+						const uint8_t datatype = m_vectorCmdData[1];
+
+						// 【重要】当前默认小端；如需大端，自行调换字节顺序
+						switch (datatype)
 						{
+						case 0: // int32
+						{
+							uint32_t raw = (static_cast<uint32_t>(m_vectorCmdData[6]) << 24)
+								| (static_cast<uint32_t>(m_vectorCmdData[7]) << 16)
+								| (static_cast<uint32_t>(m_vectorCmdData[8]) << 8)
+								| static_cast<uint32_t>(m_vectorCmdData[9]);
+							float ZeroData = static_cast<float>(raw) / 1000.0f;
+							m_function_ZeroDataCallBack(&ZeroData);
+							break;
+						}
+						case 1: // float32
+						{
+							float raw;
+							std::memcpy(&raw, m_vectorCmdData.data() + 2, sizeof(float));
+							break;
+						}
+						case 2: // double64
+						{
+							double raw;
+							std::memcpy(&raw, m_vectorCmdData.data() + 2, sizeof(double));
+							break;
+						}
+						default:
+							return false; // 未知类型
+						}
+					}
+					case 0x11:
+					{
 						//传感器指令反馈
 						if (m_vectorCmdData.size() >= 3)
 						{
@@ -310,15 +345,15 @@ bool CWHSDControlBoardProtocol::Parse()
 							case 3:
 							case 2:
 							case 4:
-								{
+							{
 								m_memCSensorData.m_cSensorIndex = m_vectorCmdData[0];
 								m_memCSensorData.m_cCmd = m_vectorCmdData[1];
-									break;
-								}
-								default:
-								{
-									break;
-								}
+								break;
+							}
+							default:
+							{
+								break;
+							}
 							}
 
 							memcpy(&(m_memCSensorData.m_wValue), m_vectorCmdData.data() + 2, sizeof(m_memCSensorData.m_wValue));
@@ -327,8 +362,8 @@ bool CWHSDControlBoardProtocol::Parse()
 								m_function_SensorDataCallBack(&m_memCSensorData);
 							}
 						}
-							break;
-						}
+						break;
+					}
 					case 0x1F:
 					{
 
@@ -361,6 +396,11 @@ void CWHSDControlBoardProtocol::RegisterAnswerFunction(const std::function<bool(
 	m_function_Answer = f;
 }
 
+void CWHSDControlBoardProtocol::RegisterZeroDataCallBack(const std::function<void(float*)>& p)
+{
+	m_function_ZeroDataCallBack = p;
+}
+
 void CWHSDControlBoardProtocol::RegisterDeviceHeartBeat(const std::function<void(const CDeviceHeartBeat&)>& f)
 {
 	m_function_DeviceHeartBeat = f;
@@ -389,7 +429,7 @@ void CWHSDControlBoardProtocol::RegisterSensorDataCallBack(const std::function<v
 }
 
 std::vector<uint8_t> CWHSDControlBoardProtocol::DeviceRun(uint8_t target, uint8_t enable, uint8_t runMode,
-                                                          uint8_t speed)
+	uint8_t speed)
 {
 	return GetCmdData(0x05, { target, enable, runMode, speed });
 }
@@ -451,7 +491,7 @@ std::vector<uint8_t> CWHSDControlBoardProtocol::SetFactoryMode(bool bFactoryMode
 
 std::vector<uint8_t> CWHSDControlBoardProtocol::SensorCmd(uint8_t sensorIndex, uint8_t cmd, uint16_t value)
 {
-	return GetCmdData(0x11, { sensorIndex ,cmd ,(uint8_t)(value>>8),(uint8_t)(value & 0xff) });
+	return GetCmdData(0x11, { sensorIndex ,cmd ,(uint8_t)(value >> 8),(uint8_t)(value & 0xff) });
 }
 
 

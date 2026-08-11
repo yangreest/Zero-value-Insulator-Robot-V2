@@ -56,11 +56,13 @@ private slots:
 	void On_neddle3_Click();
 	void On_stop_Click();
 	void On_mear_Click();
+	void On_combobox_currentIndexChanged(int index);
 
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
 	void On_ChangeTicketSignal(CNewTicketConfig strTicket);
     void On_NewReportSignal(CNewReportConfig strReport);
+	void On_ChangeReportSignal(CNewReportConfig strReport);
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;
@@ -80,6 +82,8 @@ private:
 	void RefreshControllerState(const ControllerState* p);
 
 	void CallBack_SensorValue(CSensorData* p);
+
+	void CallBack_ZeroValue(float* p);
 
 	void savePixmap(const QPixmap& pixmap);
 
@@ -140,6 +144,10 @@ private:
 	NewTicketDialog* newTicketDialog;
 
 	ContentWidget* m_activeWidget = nullptr;
+
+	QMap<QString, QMap<QString, QVector<float>>> m_mapTicketMearData;
+
+	CNewTicketConfig m_CurrentTicketConfig;
 
 public:
 	// 摄像头

@@ -164,6 +164,8 @@ public:
 
 	void RegisterAnswerFunction(const std::function<bool(uint8_t*, int)>& f);
 
+	void RegisterZeroDataCallBack(const std::function<void(float*)>& p);
+
 	void RegisterDeviceHeartBeat(const std::function<void(const CDeviceHeartBeat&)>& f);
 
 	void RegisterDeviceLog(const std::function<void(const std::string&)>& f);
@@ -232,6 +234,8 @@ private:
 	void Erase(int en);
 
 	std::function<bool(uint8_t*, int)> m_function_Answer;
+
+    std::function<void(float*)> m_function_ZeroDataCallBack;
 
 	std::function<void(CDeviceHeartBeat)> m_function_DeviceHeartBeat;
 

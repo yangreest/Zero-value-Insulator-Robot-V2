@@ -35,6 +35,12 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	ui.labelTicketLineName->setText("");
 	ui.labelPoleNumber->setText("");
 
+	// 获取结果，执行下一个
+	if (overlayLabel == nullptr)
+	{
+		overlayLabel = new QLabel(this); // 父对象设置为本窗口！重点
+	}
+
 	for (int i = 1; i <= 60; i++)
 	{
 		QString strName = QString("labelInside%1").arg(i);
@@ -50,7 +56,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
 		}
 	}
-	
+
 	for (auto& strNewTicketConfig : m_pConfig->m_vecNewTicketConfig)
 	{
 		int rowCount = ui.tableWidget_2->rowCount();
@@ -66,7 +72,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 
 	for (auto& strNewReportConfig : m_pConfig->m_vecNewReportConfig)
 	{
-        int rowCount = ui.tableWidget_3->rowCount();
+		int rowCount = ui.tableWidget_3->rowCount();
 		ui.tableWidget_3->insertRow(rowCount);
 		ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
 		ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strNewReportConfig));
@@ -84,7 +90,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	// 设置表格表头填充
 	ui.tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	// 或者只拉伸最后一列
-	
+
 	// 如果有其他表格也需要设置
 	ui.tableWidget_2->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	ui.tableWidget_3->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -112,6 +118,10 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 		std::placeholders::_2));
 	m_pXInputHelper->BeginWork();
 
+	m_mapTicketMearData.clear();
+
+	m_CurrentTicketConfig = CNewTicketConfig();
+
 
 	newTicketDialog = new NewTicketDialog();
 	newReportDialog = new NewReportDialog();
@@ -133,14 +143,11 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 		&Insulator_Zero_Value_Detection_Robot::ComDeviceConnectionChanged, this,
 		std::placeholders::_1, std::placeholders::_2, 0));
 
-	pWHSDControlBoardProtocol->RegisterAnswerFunction(
-		std::bind(&IDeviceCom::Write, pDeviceCom, std::placeholders::_1, std::placeholders::_2));
+	pWHSDControlBoardProtocol->RegisterAnswerFunction(std::bind(&IDeviceCom::Write, pDeviceCom, std::placeholders::_1, std::placeholders::_2));
 	pWHSDControlBoardProtocol->RegisterDeviceLog(std::bind(&CWriteLog::Write, m_pDeviceLog, std::placeholders::_1));
-	pWHSDControlBoardProtocol->RegisterDeviceHeartBeat(
-		std::bind(&Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat, this, std::placeholders::_1, 0));
-	pWHSDControlBoardProtocol->RegisterSensorDataCallBack(
-		std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue, this, std::placeholders::_1));
-	//pWHSDControlBoardProtocol->RegisterOTAStatus(std::bind(&MainForm::Callback_OTAStatus, this,
+	pWHSDControlBoardProtocol->RegisterDeviceHeartBeat(std::bind(&Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat, this, std::placeholders::_1, 0));
+	pWHSDControlBoardProtocol->RegisterSensorDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue, this, std::placeholders::_1));
+	pWHSDControlBoardProtocol->RegisterZeroDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue, this, std::placeholders::_1));
 	//	std::placeholders::_1,
 	//	std::placeholders::_2, std::placeholders::_3));
 	//pWHSDControlBoardProtocol->RegisterXRaySendResult(xRayResult);
@@ -202,17 +209,21 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(newTicketDialog, &NewTicketDialog::NewTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal);
 	connect(newTicketDialog, &NewTicketDialog::ChangeTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal);
 	connect(newReportDialog, &NewReportDialog::NewReportSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewReportSignal);
-	
+	connect(newReportDialog, &NewReportDialog::ChangeReportSignal, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal);
+
 	connect(ui.pBTest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Test_Click);
 	connect(ui.pBRetest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Retest_Click);
 
 	connect(ui.pushButton_14, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_forword_Click);// 前进
-    connect(ui.pushButton_15, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_backward_Click);
-    connect(ui.pushButton_26, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_stop_Click);
+	connect(ui.pushButton_15, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_backward_Click);
+	connect(ui.pushButton_26, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_stop_Click);
 	connect(ui.pushButton_17, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle1_Click);
 	connect(ui.pushButton_25, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle2_Click);
 	connect(ui.pushButton_27, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle3_Click);
 	connect(ui.pushButton_28, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_mear_Click);
+
+	connect(ui.comboBox_2, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
+	connect(ui.comboBox, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
 
 }
 
@@ -484,6 +495,60 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue(CSensorData* p)
 	}
 }
 
+void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
+{
+	float value = p[0];
+
+	overlayLabel->setWindowFlags(Qt::Widget);
+	overlayLabel->setStyleSheet("background-color:rgba(0,0,0,20);color:white;font-size:20px;");
+	overlayLabel->setText(QString("当前检测结果：%1MΩ").arg(value));
+	overlayLabel->setMinimumWidth(250);
+
+	// 铺满整个窗口，也可以自定义大小位置
+	// 显示在label_9 右下角，获取绝对的坐标
+	overlayLabel->move(ui.label_9->mapToGlobal(QPoint(ui.label_9->width() - overlayLabel->width(), ui.label_9->height() - overlayLabel->height())));
+	//overlayLabel->setGeometry(ui.label_9->geometry().x(), ui.label_9->geometry().y(), 50, 200);
+
+	overlayLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+	// 默认显示
+	overlayLabel->show();
+
+	QString strSide = ui.comboBox_2->currentText();
+	QString strDira = ui.comboBox->currentText();
+	m_mapTicketMearData[strSide][strDira].push_back(value);
+	QVector<float> vecData = m_mapTicketMearData[strSide][strDira];
+	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+
+	if (visible) // 双联
+	{
+		if (vecData.size() % 2 == 1)
+		{
+			// 奇数是内侧
+			QString strName = QString("labelInside%1").arg(vecData.size() / 2 + 1);
+			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+			if (!label)return;
+			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #10b981;\n}");
+		}
+		else
+		{
+			// 偶数是外侧
+			QString strName = QString("labelOutside%1").arg(vecData.size() / 2 );
+			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+			if (!label)return;
+			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #10b981;\n}");
+		}
+	}
+	else //单联
+	{
+		// 奇数是内侧
+		QString strName = QString("labelInside%1").arg(vecData.size());
+		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (!label)return;
+		label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #10b981;\n}");
+	}
+}
+
 void Insulator_Zero_Value_Detection_Robot::CameraConnect()
 {
 	int initStatus = 0;
@@ -673,7 +738,7 @@ void Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click(bool bState)
 {
 	if (!bState)
 	{
-        On_TurnOffAll_Click();
+		On_TurnOffAll_Click();
 	}
 	else
 	{
@@ -696,13 +761,13 @@ void Insulator_Zero_Value_Detection_Robot::On_Close_Click()
 void Insulator_Zero_Value_Detection_Robot::On_Inspection_Click()
 {
 	ui.stackedWidget_3->setCurrentIndex(0);
-	if(overlayLabel) overlayLabel->show();
+	if (overlayLabel) overlayLabel->show();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Ticket_Click()
 {
 	ui.stackedWidget_3->setCurrentIndex(1);
-	if(overlayLabel) overlayLabel->hide();
+	if (overlayLabel) overlayLabel->hide();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click()
@@ -769,6 +834,29 @@ void Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_NewReport_Click()
 {
+	//获取当前工单的ID
+	std::string strTicketId = m_CurrentTicketConfig.m_strTicketId;
+	if (m_CurrentTicketConfig.m_bGenerateReport)
+	{
+		// 已存在报告，是否需要重新生成？
+		QMessageBox::StandardButton reply = QMessageBox::question(this, "提示", "已存在报告，是否需要重新生成？", QMessageBox::Yes | QMessageBox::No);
+        if (reply == QMessageBox::Yes) 
+		{
+			// 删除报告
+			for (int i = 0; i < ui.tableWidget_3->rowCount(); i++) 
+			{
+				QTableWidgetItem* item = ui.tableWidget_3->item(i, 1);
+                if (item && item->data(Qt::UserRole).value<CNewReportConfig>().m_strReportId == strTicketId) {
+					ui.tableWidget_3->removeRow(i);
+					break;
+				}
+			}
+        }
+        else  return;
+	}
+	CNewReportConfig m_memNewReportConfig;
+    m_memNewReportConfig.m_strReportId = strTicketId;
+    newReportDialog->SetReport(m_memNewReportConfig);
 
 	newReportDialog->show();
 }
@@ -798,64 +886,70 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 {
 	int row = ui.tableWidget_2->currentRow();
 	if (row < 0)return;
-	CNewTicketConfig m_memNewTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
+	m_CurrentTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
 
-	ui.labelTicketLineName->setText(QString::fromStdString(m_memNewTicketConfig.m_strLineName));
-	ui.labelPoleNumber->setText(QString::fromStdString(m_memNewTicketConfig.m_strPoleNumber));
+	ui.labelTicketLineName->setText(QString::fromStdString(m_CurrentTicketConfig.m_strLineName));
+	ui.labelPoleNumber->setText(QString::fromStdString(m_CurrentTicketConfig.m_strPoleNumber));
 
-	bool visible = (m_memNewTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
-	SetVisibles(visible, m_memNewTicketConfig.m_wInsulatorSliceNum);
+	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	SetVisibles(visible, m_CurrentTicketConfig.m_wInsulatorSliceNum);
 
-    ui.comboBox->clear();
+	ui.comboBox->clear();
 
-	if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eOne)
+	if (m_CurrentTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eOne)
 	{
 		QStringList list;
 		list << "A相" << "B相" << "C相";
-        ui.comboBox->addItems(list);
-	}
-	else if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eTwo)
-    {
-        QStringList list;
-        list << "右A" << "右B" << "右C"<< "左A" << "左B" << "左C";
 		ui.comboBox->addItems(list);
-    }
-    else if (m_memNewTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eFour)
-    {
+	}
+	else if (m_CurrentTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eTwo)
+	{
+		QStringList list;
+		list << "右A" << "右B" << "右C" << "左A" << "左B" << "左C";
+		ui.comboBox->addItems(list);
+	}
+	else if (m_CurrentTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eFour)
+	{
 		QStringList list;
 		list << "左上A" << "左上B" << "左上C" << "左下A" << "左下B" << "左下C" << "右上A" << "右上B" << "右上C" << "右下A" << "右下B" << "右下C";
 		ui.comboBox->addItems(list);
-    }
+	}
+
+	ui.comboBox->setEnabled(true);
+	ui.comboBox_2->setEnabled(true);
+	ui.pBTest->setEnabled(true);
+	ui.pBRetest->setEnabled(true);
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 {
-	if (overlayLabel == nullptr)
+	if (m_CurrentTicketConfig.m_strTicketId == "")
 	{
-		overlayLabel = new QLabel(this); // 父对象设置为本窗口！重点
+        QMessageBox::information(this, "提示", "请加载一个工单");
+		return;
 	}
-		// 主窗口已有其他按钮、表格等控件
-	// ===== 创建叠加Label =====
-		
-		
-		overlayLabel->setWindowFlags(Qt::Widget);
-		overlayLabel->setStyleSheet("background-color:rgba(0,0,0,20);color:white;font-size:20px;");
-		overlayLabel->setText("当前检测结果：3385MΩ");
-		overlayLabel->setMinimumWidth(250);
+	QString strDira = ui.comboBox->currentText();
+	QString strSide = ui.comboBox_2->currentText();
+	QVector<float> vecData = m_mapTicketMearData[strSide][strDira];
+	if (vecData.size() >= m_CurrentTicketConfig.m_wInsulatorSliceNum)
+	{
+        QMessageBox::information(this, "提示", "请 换相 或换 号侧 ！");
+        return;
+	}
 
-		// 铺满整个窗口，也可以自定义大小位置
-		// 显示在label_9 右下角，获取绝对的坐标
-		overlayLabel->move(ui.label_9->mapToGlobal(QPoint(ui.label_9->width() - overlayLabel->width() , ui.label_9->height() - overlayLabel->height())));
-		//overlayLabel->setGeometry(ui.label_9->geometry().x(), ui.label_9->geometry().y(), 50, 200);
-
-		overlayLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
-
-		// 默认显示
-		overlayLabel->show();
+	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 {
+	// 删除最后一个数据
+	QString strDira = ui.comboBox->currentText();
+	QString strSide = ui.comboBox_2->currentText();
+    m_mapTicketMearData[strSide][strDira].pop_back();
+	
+	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_forword_Click()
@@ -879,16 +973,16 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle1_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_neddle2_Click()
 {
-    auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 		m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
-    m_pComDevice->Write(cmds.data(), cmds.size());
+	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_neddle3_Click()
 {
-    auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 		m_pConfig->m_memControlBoardConfig.m_cDownAngle);
-    m_pComDevice->Write(cmds.data(), cmds.size());
+	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_stop_Click()
@@ -904,6 +998,64 @@ void Insulator_Zero_Value_Detection_Robot::On_mear_Click()
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
+void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int index)
+{
+	QString strDira = ui.comboBox->currentText();
+	QString strSide = ui.comboBox_2->currentText();
+	QVector<float> vecData = m_mapTicketMearData[strSide][strDira];
+	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+
+	for (int i = 1; i <= 60; i++)
+	{
+		QString strName = QString("labelInside%1").arg(i);
+		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+		}
+		strName = QString("labelOutside%1").arg(i);
+		label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+		if (label)
+		{
+			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+		}
+	}
+
+	if (visible) // 双联
+	{
+		for (int i = 1; i <= (vecData.size() + 1) / 2; i++)
+		{
+			QString strName = QString("labelInside%1").arg(i);
+			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+			if (label)
+			{
+				// TODO:根据数据设置颜色
+				float valueInside = vecData[2 * i - 2];
+				label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #10b981;\n}");
+			}
+			strName = QString("labelOutside%1").arg(i);
+			label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+			if(2 * i - 1>=vecData.size())continue;
+			if (label)
+			{
+				float valueOutside = vecData[2 * i - 1];
+				label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #10b981;\n}");
+			}
+		}
+	}
+	else // 单联
+	{
+		for (int i = 1; i <= vecData.size(); i++)
+		{
+			QString strName = QString("labelInside%1").arg(i);
+			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+			if(!label) continue;
+            label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选：配套底色/边框按需加 */\n    background-color: #10b981;\n}");
+		}
+	}
+	
+}
+
 void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfig strTicket)
 {
 	// 更新tableWidget_2选中行的数据
@@ -916,13 +1068,25 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfi
 	ui.tableWidget_2->setItem(currentRow, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(strTicket.m_eBunchType))));
 	ui.tableWidget_2->setItem(currentRow, 4, new QTableWidgetItem(QString::number(strTicket.m_wInsulatorSliceNum)));
 	ui.tableWidget_2->setItem(currentRow, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(strTicket.m_eLoopType))));
+
+	// 根据m_strReportId找到m_pConfig->m_vecNewTicketConfig 并覆盖strTicket
+	for (auto& ticket : m_pConfig->m_vecNewTicketConfig)
+	{
+		if (ticket.m_strTicketId == strTicket.m_strTicketId)
+		{
+			ticket = strTicket;
+			break;
+		}
+	}
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig strReport)
 {
-	strReport.m_strReportId = GenerateUniqueReportId();
+	//strReport.m_strReportId = GenerateUniqueReportId();
 	int rowCount = ui.tableWidget_3->rowCount();
 	ui.tableWidget_3->insertRow(rowCount);
+	strReport.m_mapTicketMearData = m_mapTicketMearData;
 
 	ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
 	ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strReport));
@@ -931,8 +1095,31 @@ void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig s
 	ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionPerson)));
 	ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strReport.m_strWorkPlace)));
 
-    m_pConfig->m_vecNewReportConfig.push_back(strReport);
-    m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+	m_pConfig->m_vecNewReportConfig.push_back(strReport);
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal(CNewReportConfig strReport)
+{
+	int rowCount = ui.tableWidget_3->currentRow();
+	ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
+	ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strReport));
+	ui.tableWidget_3->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strReport.m_strReportId)));
+	ui.tableWidget_3->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionUnit)));
+	ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionPerson)));
+	ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strReport.m_strWorkPlace)));
+
+
+	// 根据m_strReportId找到m_pConfig->m_vecNewReportConfig 并覆盖strReport
+	for (auto& report : m_pConfig->m_vecNewReportConfig)
+	{
+		if (report.m_strReportId == strReport.m_strReportId)
+		{
+			report = strReport;
+			break;
+		}
+	}
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig config)
@@ -948,9 +1135,9 @@ void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig c
 	ui.tableWidget_2->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(config.m_eBunchType))));
 	ui.tableWidget_2->setItem(rowCount, 4, new QTableWidgetItem(QString::number(config.m_wInsulatorSliceNum)));
 	ui.tableWidget_2->setItem(rowCount, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(config.m_eLoopType))));
-	
+
 	m_pConfig->m_vecNewTicketConfig.push_back(config);
-    m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	return;
 }
 

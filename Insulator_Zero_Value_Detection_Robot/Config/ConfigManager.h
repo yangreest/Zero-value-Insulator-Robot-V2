@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <qmetatype.h>
+#include <QMap>
+#include <QString>
 
 
 class CControlBoardConfig
@@ -14,7 +16,7 @@ public:
 	bool m_bFactoryMode;
 	uint8_t m_cUpAngle; // 探针1的位置
 	uint8_t m_cDownAngle; // 探针待机的位置
-    uint8_t m_cUpAngle2;//探针2的位置
+	uint8_t m_cUpAngle2;//探针2的位置
 	uint8_t m_cWalkMotorSpeed;
 };
 
@@ -42,6 +44,8 @@ public:
 	std::string m_strDetectionPerson;
 	// 作业地点
 	std::string m_strWorkPlace;
+
+	QMap<QString, QMap<QString, QVector<float>>> m_mapTicketMearData;
 };
 
 class CNewTicketConfig
@@ -93,15 +97,15 @@ public:
 	};
 
 	static const LoopType m_vecLoopType(const std::string& strLoopType)
-	{ 
-        if (strLoopType == "同塔单回")
-            return LoopType::eOne;
-        else if (strLoopType == "同塔双回")
-            return LoopType::eTwo;
-        else if (strLoopType == "同塔四回")
-            return LoopType::eFour;
-        else
-            return LoopType::eOne;
+	{
+		if (strLoopType == "同塔单回")
+			return LoopType::eOne;
+		else if (strLoopType == "同塔双回")
+			return LoopType::eTwo;
+		else if (strLoopType == "同塔四回")
+			return LoopType::eFour;
+		else
+			return LoopType::eOne;
 	};
 
 	static const BunchType m_vecBunchType(const std::string& strBunchType)
@@ -130,6 +134,8 @@ public:
 	std::string m_strDetectionUnit;
 	// 备注信息
 	std::string m_strRemark;
+	// 是否生成过报告
+	bool m_bGenerateReport =false;
 };
 
 class CConfigManager

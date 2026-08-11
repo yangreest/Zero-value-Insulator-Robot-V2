@@ -16,13 +16,18 @@ public:
 	~NewReportDialog();
 signals:
 	void NewReportSignal(CNewReportConfig strReport);
-
+	void ChangeReportSignal(CNewReportConfig strReport);
+public:
+	void SetReport(CNewReportConfig strReport);
 private slots:
 	void on_buttonBox_accepted();
 	void on_buttonBox_rejected();
 
 private:
 	Ui::NewReportDialogClass ui;
+
+	//bool m_bIsNewReport;
+	CNewReportConfig m_strReport;
 };
 
 #endif // NEWREPORTDIALOG_H

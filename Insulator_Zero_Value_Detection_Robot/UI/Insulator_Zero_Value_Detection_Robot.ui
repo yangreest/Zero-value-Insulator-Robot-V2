@@ -505,6 +505,9 @@ border: 1px solid #0D1321;
              </item>
              <item>
               <widget class="QComboBox" name="comboBox_2">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
                <property name="minimumSize">
                 <size>
                  <width>0</width>
@@ -531,6 +534,9 @@ border: 1px solid #0D1321;
              </item>
              <item>
               <widget class="QComboBox" name="comboBox">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
                <property name="minimumSize">
                 <size>
                  <width>0</width>
@@ -629,6 +635,9 @@ background-color: #10b981;</string>
                </item>
                <item>
                 <widget class="QPushButton" name="pBRetest">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
                  <property name="minimumSize">
                   <size>
                    <width>0</width>
@@ -1355,7 +1364,7 @@ QPushButton:checked {
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>0</number>
+           <number>3</number>
           </property>
           <widget class="QWidget" name="stackedWidget_3Page1">
            <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -4542,6 +4551,9 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
 }</string>
                     </property>
+                    <attribute name="verticalHeaderVisible">
+                     <bool>false</bool>
+                    </attribute>
                     <row>
                      <property name="text">
                       <string>新建行</string>
@@ -4813,6 +4825,32 @@ QPushButton:pressed
                </widget>
               </item>
               <item>
+               <widget class="QPushButton" name="pBNewReport">
+                <property name="styleSheet">
+                 <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                </property>
+                <property name="text">
+                 <string>生成报告</string>
+                </property>
+               </widget>
+              </item>
+              <item>
                <spacer name="horizontalSpacer_12">
                 <property name="orientation">
                  <enum>Qt::Orientation::Horizontal</enum>
@@ -4924,6 +4962,9 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
               <property name="sortingEnabled">
                <bool>false</bool>
               </property>
+              <attribute name="verticalHeaderVisible">
+               <bool>false</bool>
+              </attribute>
               <column>
                <property name="text">
                 <string>序号</string>
@@ -5074,32 +5115,6 @@ QPushButton:pressed
             <item>
              <layout class="QHBoxLayout" name="horizontalLayout_11">
               <item>
-               <widget class="QPushButton" name="pBNewReport">
-                <property name="styleSheet">
-                 <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                </property>
-                <property name="text">
-                 <string>生成报告</string>
-                </property>
-               </widget>
-              </item>
-              <item>
                <widget class="QPushButton" name="pushButton_20">
                 <property name="styleSheet">
                  <string notr="true">
@@ -5239,6 +5254,9 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
 }</string>
               </property>
+              <attribute name="verticalHeaderVisible">
+               <bool>false</bool>
+              </attribute>
               <column>
                <property name="text">
                 <string>序号</string>
@@ -5439,7 +5457,69 @@ border :none;
                  </item>
                  <item>
                   <layout class="QGridLayout" name="gridLayout_2">
-                   <item row="0" column="2">
+                   <item row="2" column="4">
+                    <widget class="QPushButton" name="pushButton_8">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="3">
+                    <widget class="QLineEdit" name="lineEdit_9">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="5">
+                    <widget class="QLabel" name="label_100">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>OTA升级</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="5">
+                    <widget class="QLabel" name="label_101">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>摄像头IP</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="4">
                     <widget class="QPushButton" name="pushButton_3">
                      <property name="styleSheet">
                       <string notr="true">
@@ -5465,78 +5545,7 @@ QPushButton:pressed
                      </property>
                     </widget>
                    </item>
-                   <item row="1" column="3">
-                    <widget class="QLabel" name="label_100">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>OTA升级</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="1" column="1">
-                    <widget class="QComboBox" name="comboBox_3">
-                     <item>
-                      <property name="text">
-                       <string>高速</string>
-                      </property>
-                     </item>
-                     <item>
-                      <property name="text">
-                       <string>中速</string>
-                      </property>
-                     </item>
-                     <item>
-                      <property name="text">
-                       <string>低速</string>
-                      </property>
-                     </item>
-                    </widget>
-                   </item>
-                   <item row="1" column="5">
-                    <widget class="QPushButton" name="pushButton_7">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>升级</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="3">
-                    <widget class="QLabel" name="label_101">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>摄像头IP</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="0">
+                   <item row="2" column="1">
                     <widget class="QLabel" name="label_98">
                      <property name="sizePolicy">
                       <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
@@ -5549,50 +5558,7 @@ QPushButton:pressed
                      </property>
                     </widget>
                    </item>
-                   <item row="1" column="4">
-                    <widget class="QLineEdit" name="lineEdit_11">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="0" column="0">
-                    <widget class="QLabel" name="label_96">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>探针角度设置</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="1">
-                    <widget class="QLineEdit" name="lineEdit_9">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="4">
-                    <widget class="QLineEdit" name="lineEdit_10">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="1" column="0">
+                   <item row="1" column="1">
                     <widget class="QLabel" name="label_97">
                      <property name="sizePolicy">
                       <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
@@ -5605,7 +5571,7 @@ QPushButton:pressed
                      </property>
                     </widget>
                    </item>
-                   <item row="2" column="5">
+                   <item row="2" column="7">
                     <widget class="QPushButton" name="pushButton_9">
                      <property name="styleSheet">
                       <string notr="true">
@@ -5631,7 +5597,43 @@ QPushButton:pressed
                      </property>
                     </widget>
                    </item>
-                   <item row="0" column="4">
+                   <item row="2" column="6">
+                    <widget class="QLineEdit" name="lineEdit_10">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="4">
+                    <widget class="QPushButton" name="pushButton_6">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="6">
                     <layout class="QVBoxLayout" name="verticalLayout_17">
                      <property name="leftMargin">
                       <number>0</number>
@@ -5658,21 +5660,27 @@ QPushButton:pressed
                      </item>
                     </layout>
                    </item>
-                   <item row="0" column="3">
-                    <widget class="QLabel" name="label_99">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>校准模块</string>
-                     </property>
+                   <item row="1" column="3">
+                    <widget class="QComboBox" name="comboBox_3">
+                     <item>
+                      <property name="text">
+                       <string>高速</string>
+                      </property>
+                     </item>
+                     <item>
+                      <property name="text">
+                       <string>中速</string>
+                      </property>
+                     </item>
+                     <item>
+                      <property name="text">
+                       <string>低速</string>
+                      </property>
+                     </item>
                     </widget>
                    </item>
-                   <item row="1" column="2">
-                    <widget class="QPushButton" name="pushButton_6">
+                   <item row="1" column="7">
+                    <widget class="QPushButton" name="pushButton_7">
                      <property name="styleSheet">
                       <string notr="true">
 QPushButton
@@ -5693,21 +5701,11 @@ QPushButton:pressed
 }</string>
                      </property>
                      <property name="text">
-                      <string>设置</string>
+                      <string>升级</string>
                      </property>
                     </widget>
                    </item>
-                   <item row="0" column="1">
-                    <widget class="QLineEdit" name="lineEdit_7">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="0" column="5">
+                   <item row="0" column="7">
                     <layout class="QVBoxLayout" name="verticalLayout_10">
                      <property name="leftMargin">
                       <number>0</number>
@@ -5778,31 +5776,111 @@ QPushButton:pressed
                      </item>
                     </layout>
                    </item>
-                   <item row="2" column="2">
-                    <widget class="QPushButton" name="pushButton_8">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>设置</string>
+                   <item row="1" column="6">
+                    <widget class="QLineEdit" name="lineEdit_11">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
                      </property>
                     </widget>
+                   </item>
+                   <item row="0" column="3">
+                    <layout class="QVBoxLayout" name="verticalLayout_18">
+                     <property name="leftMargin">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_7">
+                       <property name="maximumSize">
+                        <size>
+                         <width>200</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_14">
+                       <property name="maximumSize">
+                        <size>
+                         <width>200</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_13">
+                       <property name="maximumSize">
+                        <size>
+                         <width>200</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </item>
+                   <item row="0" column="5">
+                    <widget class="QLabel" name="label_99">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>校准模块</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <layout class="QVBoxLayout" name="verticalLayout_19">
+                     <property name="leftMargin">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <widget class="QLabel" name="label_102">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="text">
+                        <string>探针向内角度</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="label_96">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="text">
+                        <string>探针复位角度</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="label_104">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="text">
+                        <string>探针向外角度</string>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
                    </item>
                   </layout>
                  </item>
@@ -6116,7 +6194,7 @@ border :none;
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup"/>
   <buttongroup name="buttonGroup_2"/>
+  <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>

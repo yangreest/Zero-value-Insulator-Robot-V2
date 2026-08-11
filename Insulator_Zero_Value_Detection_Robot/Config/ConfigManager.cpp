@@ -1,5 +1,6 @@
 #include "ConfigManager.h"
 #include "../Tools/tinyxml2.h"
+#include <Tools/BinData.h>
 
 CControlBoardConfig::CControlBoardConfig()
 {
@@ -196,6 +197,17 @@ void CConfigManager::Read(const std::string& filePath)
                 {
                     newReportConfig.m_strWorkPlace = WorkPlaceElement->GetText();
                 }
+                const tinyxml2::XMLElement* MapTicketMearDataElement = sizeElement->FirstChildElement("TicketMearData");
+				if (MapTicketMearDataElement && MapTicketMearDataElement->GetText())
+				{
+                    std::string base64Str = MapTicketMearDataElement->GetText();
+					QMap<QString, QMap<QString, QVector<float>>> map;
+					QString qBase64 = QString::fromStdString(base64Str);
+					QByteArray bin = base64ToBinary(qBase64);
+					fromBinaryData(bin, map);
+					newReportConfig.m_mapTicketMearData = map;
+				}
+
                 m_vecNewReportConfig.push_back(newReportConfig);
                 sizeElement = sizeElement->NextSiblingElement("Size");
             }
@@ -302,6 +314,10 @@ void CConfigManager::Write(const std::string& filePath)
                 bunchTypeElement->SetText(CNewTicketConfig::m_vecBunchType(newTicketConfig.m_eBunchType).c_str());
                 sizeElement->InsertEndChild(bunchTypeElement);
 
+                tinyxml2::XMLElement* lineTypeElement = doc.NewElement("InsulatorSliceNum");
+                lineTypeElement->SetText(newTicketConfig.m_wInsulatorSliceNum);
+                sizeElement->InsertEndChild(lineTypeElement);
+
                 tinyxml2::XMLElement* loopTypeElement = doc.NewElement("LoopType");
                 loopTypeElement->SetText(CNewTicketConfig::m_vecLoopType(newTicketConfig.m_eLoopType).c_str());
                 sizeElement->InsertEndChild(loopTypeElement);
@@ -349,8 +365,13 @@ void CConfigManager::Write(const std::string& filePath)
                 tinyxml2::XMLElement* detectionUnitElement = doc.NewElement("DetectionUnit");
                 detectionUnitElement->SetText(newReportConfig.m_strDetectionUnit.c_str());
                 sizeElement->InsertEndChild(detectionUnitElement);
+
+                tinyxml2::XMLElement* ticketMearDataElement = doc.NewElement("TicketMearData");
+				QByteArray btData = toBinaryData(newReportConfig.m_mapTicketMearData);
+				QString base64Str = binaryToBase64(btData);
+				ticketMearDataElement->SetText(base64Str.toStdString().c_str());
+				sizeElement->InsertEndChild(ticketMearDataElement);
 			}
-            
         }
     }
 

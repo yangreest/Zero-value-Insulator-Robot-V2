@@ -19,7 +19,7 @@ NewTicketDialog::~NewTicketDialog()
 
 void NewTicketDialog::on_buttonBox_accepted()
 {
-	CNewTicketConfig m_memNewTicketConfig;
+	CNewTicketConfig m_memNewTicketConfig = m_strTicket;
 	m_memNewTicketConfig.m_strLineName = ui.lineEdit->text().toStdString();
 	m_memNewTicketConfig.m_strPoleNumber = ui.lineEdit_2->text().toStdString();
 	m_memNewTicketConfig.m_eBunchType = (CNewTicketConfig::BunchType)ui.comboBox->currentIndex();
@@ -39,6 +39,7 @@ void NewTicketDialog::on_buttonBox_accepted()
 
 void NewTicketDialog::SetTicket(CNewTicketConfig strTicket)
 {
+	m_strTicket = strTicket;
 	ui.lineEdit->setText(QString::fromStdString(strTicket.m_strLineName));
 	ui.lineEdit_2->setText(QString::fromStdString(strTicket.m_strPoleNumber));
 	ui.comboBox->setCurrentIndex((int)strTicket.m_eBunchType);
