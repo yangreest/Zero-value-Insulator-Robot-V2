@@ -167,6 +167,26 @@ void CConfigManager::Read(const std::string& filePath)
 				 {
                      newTicketConfig.m_strDetectionUnit = DetectionUnitElement->GetText();
 				 }
+                 const tinyxml2::XMLElement* DetectionPersonElement = sizeElement->FirstChildElement("DetectionPerson");
+                 if (DetectionPersonElement && DetectionPersonElement->GetText())
+                 {
+                     newTicketConfig.m_strDetectionPerson = DetectionPersonElement->GetText();
+                 }
+                 const tinyxml2::XMLElement* CurrentTypeElement = sizeElement->FirstChildElement("CurrentType");
+                 if (CurrentTypeElement && CurrentTypeElement->GetText())
+                 {
+                     newTicketConfig.m_eCurrentType = CNewTicketConfig::m_vecCurrentType(CurrentTypeElement->GetText());
+                 }
+                 const tinyxml2::XMLElement* StartTimeElement = sizeElement->FirstChildElement("StartTime");
+                 if (StartTimeElement && StartTimeElement->GetText())
+                 {
+                     newTicketConfig.m_strStartTime = StartTimeElement->GetText();
+                 }
+                 const tinyxml2::XMLElement* EndTimeElement = sizeElement->FirstChildElement("EndTime");
+                 if (EndTimeElement && EndTimeElement->GetText())
+                 {
+                     newTicketConfig.m_strEndTime = EndTimeElement->GetText();
+                 }
                  const tinyxml2::XMLElement* RemarkElement = sizeElement->FirstChildElement("Remark");
                  if (RemarkElement && RemarkElement->GetText())
                  {
@@ -270,11 +290,11 @@ void CConfigManager::Write(const std::string& filePath)
 
         tinyxml2::XMLElement* upElem2 = doc.NewElement("UpAngle2");
         upElem2->SetText(m_memControlBoardConfig.m_cUpAngle2);
-		upElem2->InsertEndChild(upElem2);
+		deviceBoard->InsertEndChild(upElem2);
 
         tinyxml2::XMLElement* insuThresholdElem = doc.NewElement("InsuThreshold");
         insuThresholdElem->SetText(m_memControlBoardConfig.m_wInsuThreshold);
-		insuThresholdElem->InsertEndChild(insuThresholdElem);
+		deviceBoard->InsertEndChild(insuThresholdElem);
 	}
 
 	// --- 写入 Camera ---
@@ -348,9 +368,21 @@ void CConfigManager::Write(const std::string& filePath)
                 detectionUnitElement->SetText(newTicketConfig.m_strDetectionUnit.c_str());
                 sizeElement->InsertEndChild(detectionUnitElement);
 
-                tinyxml2::XMLElement* detectionPersonElement = doc.NewElement("DetectionUnit");
-                detectionPersonElement->SetText(newTicketConfig.m_strDetectionUnit.c_str());
+                tinyxml2::XMLElement* detectionPersonElement = doc.NewElement("DetectionPerson");
+                detectionPersonElement->SetText(newTicketConfig.m_strDetectionPerson.c_str());
                 sizeElement->InsertEndChild(detectionPersonElement);
+
+                tinyxml2::XMLElement* currentTypeElement = doc.NewElement("CurrentType");
+                currentTypeElement->SetText(CNewTicketConfig::m_vecCurrentType(newTicketConfig.m_eCurrentType).c_str());
+                sizeElement->InsertEndChild(currentTypeElement);
+
+                tinyxml2::XMLElement* startTimeElement = doc.NewElement("StartTime");
+                startTimeElement->SetText(newTicketConfig.m_strStartTime.c_str());
+                sizeElement->InsertEndChild(startTimeElement);
+
+                tinyxml2::XMLElement* endTimeElement = doc.NewElement("EndTime");
+                endTimeElement->SetText(newTicketConfig.m_strEndTime.c_str());
+                sizeElement->InsertEndChild(endTimeElement);
 
                 tinyxml2::XMLElement* remarkElement = doc.NewElement("Remark");
                 remarkElement->SetText(newTicketConfig.m_strRemark.c_str());

@@ -5,26 +5,41 @@
 
 #include <QColor>
 #include <QList>
-#include <QRandomGenerator>
 #include <QRect>
+
+#include <cmath>
+#include <limits>
 
 ModelDataModel::ModelDataModel(QObject *parent) :
     QAbstractTableModel(parent)
 {
-    m_columnCount = 4;
-    m_rowCount = 15;
+    m_columnCount = 0;
+    m_rowCount = 0;
+}
 
-    // m_data
+void ModelDataModel::setTableLayout(const QStringList &headers, int rowCount)
+{
+    beginResetModel();
+
+    qDeleteAll(m_data);
+    m_data.clear();
+
+    m_headers = headers;
+    m_columnCount = headers.size();
+    m_rowCount = rowCount;
+
+    // 初始化为空单元格（NaN），测量值到达后逐个填充
+    const qreal empty = std::numeric_limits<qreal>::quiet_NaN();
     for (int i = 0; i < m_rowCount; i++) {
-        auto dataList = new QList<qreal>(m_columnCount);
-        for (int k = 0; k < dataList->size(); k++) {
-            if (k % 2 == 0)
-                dataList->replace(k, i * 50 + QRandomGenerator::global()->bounded(20));
-            else
-                dataList->replace(k, QRandomGenerator::global()->bounded(100));
-        }
-        m_data.append(dataList);
+        m_data.append(new QList<qreal>(m_columnCount, empty));
     }
+
+    endResetModel();
+}
+
+int ModelDataModel::columnIndex(const QString &header) const
+{
+    return m_headers.indexOf(header);
 }
 
 int ModelDataModel::rowCount(const QModelIndex &parent) const
@@ -45,10 +60,10 @@ QVariant ModelDataModel::headerData(int section, Qt::Orientation orientation, in
         return QVariant();
 
     if (orientation == Qt::Horizontal) {
-        if (section % 2 == 0)
-            return "x";
-        else
-            return "y";
+        // 表头与comboBox的item内容一致
+        if (section >= 0 && section < m_headers.size())
+            return m_headers.at(section);
+        return QVariant();
     } else {
         return QString("%1").arg(section + 1);
     }
@@ -56,10 +71,15 @@ QVariant ModelDataModel::headerData(int section, Qt::Orientation orientation, in
 
 QVariant ModelDataModel::data(const QModelIndex &index, int role) const
 {
-    if (role == Qt::DisplayRole) {
-        return m_data[index.row()]->at(index.column());
-    } else if (role == Qt::EditRole) {
-        return m_data[index.row()]->at(index.column());
+    if (!index.isValid())
+        return QVariant();
+
+    if (role == Qt::DisplayRole || role == Qt::EditRole) {
+        qreal value = m_data[index.row()]->at(index.column());
+        // 尚未测量的单元格显示为空
+        if (std::isnan(value))
+            return QVariant();
+        return value;
     } else if (role == Qt::BackgroundRole) {
         for (const QRect &rect : m_mapping) {
             if (rect.contains(index.column(), index.row()))

@@ -48,6 +48,12 @@ private slots:
 	void On_LoadTicket_Click();
 	void On_Test_Click();
 	void On_Retest_Click();
+	void On_SaveInsuThreshold_Click();
+
+	// 工单查询重置
+	void On_ResetTicket_Click();
+	// 报告查询重置
+	void On_ResetReport_Click();
 
 	void On_forword_Click();
     void On_backward_Click();
@@ -92,6 +98,15 @@ private:
 
 	//自定义显示label
 	void SetVisibles(bool bVisible,int nSliceNum);
+
+	// 填充tableWidget_2指定行的工单数据（全部列）
+	void SetTicketRow(int row, const CNewTicketConfig& ticket);
+
+	// 根据lineEdit、lineEdit_3过滤tableWidget_2
+	void FilterTicketTable();
+
+	// 根据lineEdit_4、lineEdit_6过滤tableWidget_3
+	void FilterReportTable();
 
 	ControllerState m_memControllerState;
 
@@ -144,6 +159,9 @@ private:
 	NewTicketDialog* newTicketDialog;
 
 	ContentWidget* m_activeWidget = nullptr;
+
+	// 电阻值表格/曲线控件（列随comboBox、行随片数）
+	ModelDataWidget* m_pModelDataWidget = nullptr;
 
 	QMap<QString, QMap<QString, QVector<float>>> m_mapTicketMearData;
 

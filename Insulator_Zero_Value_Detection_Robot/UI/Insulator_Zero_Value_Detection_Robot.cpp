@@ -7,8 +7,11 @@
 #include <QScreen>
 #include <QApplication>
 #include <QMessageBox.h>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QDateTime>
 #include <QFileDialog.h>
+#include <QVBoxLayout>
 #include <random>
 
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
@@ -34,6 +37,17 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	ui.label_22->setVisible(false);
 	ui.labelTicketLineName->setText("");
 	ui.labelPoleNumber->setText("");
+
+	// splitter首次布局前设置，Qt按数值比例分配空间（视频区2:标签页1），之后手动拖拽不受影响
+	// 注意：在 showMaximized() 之后调用 setWindowFlags 修改窗口标志会导致窗口销毁并重建，
+	// 这会重置 splitter 的布局状态。因此必须延迟到事件循环，等待窗口重建并最大化布局完成后再设置。
+	QTimer::singleShot(0, this, [this]() {
+		int totalHeight = ui.splitter->height();
+		if (totalHeight > 0) {
+			// 按 视频区2 : 标签页1 的实际像素比例分配
+			ui.splitter->setSizes({ totalHeight * 2 / 3, totalHeight / 3 });
+		}
+	});
 
 	ui.groupBox_7->setVisible(false);
 
@@ -63,13 +77,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	{
 		int rowCount = ui.tableWidget_2->rowCount();
 		ui.tableWidget_2->insertRow(rowCount);
-		ui.tableWidget_2->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
-		ui.tableWidget_2->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strNewTicketConfig));
-		ui.tableWidget_2->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(strNewTicketConfig.m_strLineName)));
-		ui.tableWidget_2->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strNewTicketConfig.m_strPoleNumber)));
-		ui.tableWidget_2->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(strNewTicketConfig.m_eBunchType))));
-		ui.tableWidget_2->setItem(rowCount, 4, new QTableWidgetItem(QString::number(strNewTicketConfig.m_wInsulatorSliceNum)));
-		ui.tableWidget_2->setItem(rowCount, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(strNewTicketConfig.m_eLoopType))));
+		SetTicketRow(rowCount, strNewTicketConfig);
 	}
 
 	for (auto& strNewReportConfig : m_pConfig->m_vecNewReportConfig)
@@ -84,9 +92,18 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strNewReportConfig.m_strWorkPlace)));
 	}
 
-	m_activeWidget = new ModelDataWidget(ui.widget);
+	// 初始无过滤条件，全部显示
+	FilterTicketTable();
+	FilterReportTable();
+
+	m_pModelDataWidget = new ModelDataWidget(ui.widget);
+	m_activeWidget = m_pModelDataWidget;
 	m_activeWidget->load();
-	m_activeWidget->resize(ui.widget->size());
+	// 构造函数中窗口尚未显示/最大化，此时ui.widget->size()不是最终尺寸；
+	// 改用布局管理，让曲线控件自动跟随ui.widget尺寸，避免一次性resize导致启动时不显示
+	QVBoxLayout* pChartLayout = new QVBoxLayout(ui.widget);
+	pChartLayout->setContentsMargins(0, 0, 0, 0);
+	pChartLayout->addWidget(m_activeWidget);
 	m_activeWidget->setVisible(true);
 
 	// 设置表格表头填充
@@ -103,9 +120,17 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 
 	ui.comboBox_3->setCurrentIndex(m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);				// 控制电机速度
 
+	// IP地址校验 0‑255.0‑255.0‑255.0‑255
+	QRegularExpression ipRx("((2[0-4]\\d|25[0-5]|[01]?\\d\\d?)\\.){3}(2[0-4]\\d|25[0-5]|[01]?\\d\\d?)");
+	ui.lineEdit_9->setValidator(new QRegularExpressionValidator(ipRx, ui.lineEdit_9));
+
+	ui.lineEdit_10->setValidator(new QRegularExpressionValidator(ipRx, ui.lineEdit_10));
+
 	ui.lineEdit_9->setText(QString::fromStdString(m_pConfig->m_memControlBoardConfig.m_strIp));			// 设备IP
 
 	ui.lineEdit_10->setText(QString::fromStdString(m_pConfig->m_memCCameraConfig.m_strLeftIp));         // 左摄像头IP	
+
+    ui.lineEdit_15->setText(QString::number(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold));
 }
 
 void Insulator_Zero_Value_Detection_Robot::InitParam()
@@ -236,6 +261,19 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 
 	connect(ui.comboBox_2, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
 	connect(ui.comboBox, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
+
+	// 工单列表过滤：线路名称 + 检测人员（实时过滤，也可点查询按钮）
+	connect(ui.lineEdit, &QLineEdit::textChanged, this, &Insulator_Zero_Value_Detection_Robot::FilterTicketTable);
+	connect(ui.lineEdit_3, &QLineEdit::textChanged, this, &Insulator_Zero_Value_Detection_Robot::FilterTicketTable);
+	connect(ui.pushButton_10, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::FilterTicketTable);
+	connect(ui.pushButton_11, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ResetTicket_Click);
+
+	// 报告列表过滤：线路信息 + 检测人员（实时过滤）
+	connect(ui.lineEdit_4, &QLineEdit::textChanged, this, &Insulator_Zero_Value_Detection_Robot::FilterReportTable);
+	connect(ui.lineEdit_6, &QLineEdit::textChanged, this, &Insulator_Zero_Value_Detection_Robot::FilterReportTable);
+	connect(ui.pushButton_18, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ResetReport_Click);
+
+    connect(ui.pushButton_29, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveInsuThreshold_Click);
 
 
 	ui.pBInspection->setChecked(true);
@@ -527,6 +565,18 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 	m_mapTicketMearData[strSide][strDira].push_back(value);
 	QVector<float> vecData = m_mapTicketMearData[strSide][strDira];
 	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+
+	// 每获得一个测量值，填充到表格对应列的空单元格并绘制曲线（回调在协议线程，切到UI线程执行）
+	// 双联时每相拆为两列：奇数次测量为内侧，偶数次为外侧
+	QString strHeader = strDira;
+	if (visible)
+		strHeader += (vecData.size() % 2 == 1) ? QStringLiteral("内侧") : QStringLiteral("外侧");
+	ModelDataWidget* pModelDataWidget = m_pModelDataWidget;
+	double dValue = value;
+	QMetaObject::invokeMethod(this, [pModelDataWidget, strHeader, dValue]() {
+		if (pModelDataWidget)
+			pModelDataWidget->appendValue(strHeader, dValue);
+	}, Qt::QueuedConnection);
 
 	if (visible) // 双联
 	{
@@ -904,24 +954,35 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 
 	ui.comboBox->clear();
 
+	QStringList phaseList;
 	if (m_CurrentTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eOne)
 	{
-		QStringList list;
-		list << "A相" << "B相" << "C相";
-		ui.comboBox->addItems(list);
+		phaseList << "A相" << "B相" << "C相";
 	}
 	else if (m_CurrentTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eTwo)
 	{
-		QStringList list;
-		list << "右A" << "右B" << "右C" << "左A" << "左B" << "左C";
-		ui.comboBox->addItems(list);
+		phaseList << "右A" << "右B" << "右C" << "左A" << "左B" << "左C";
 	}
 	else if (m_CurrentTicketConfig.m_eLoopType == CNewTicketConfig::LoopType::eFour)
 	{
-		QStringList list;
-		list << "左上A" << "左上B" << "左上C" << "左下A" << "左下B" << "左下C" << "右上A" << "右上B" << "右上C" << "右下A" << "右下B" << "右下C";
-		ui.comboBox->addItems(list);
+		phaseList << "左上A" << "左上B" << "左上C" << "左下A" << "左下B" << "左下C" << "右上A" << "右上B" << "右上C" << "右下A" << "右下B" << "右下C";
 	}
+	ui.comboBox->addItems(phaseList);
+
+	// 表格列随comboBox的item，行随片数；双联时每相拆为内侧/外侧两列，每相各占一片数的行
+	QStringList tableHeaders;
+	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	if (bDouble)
+	{
+		for (const QString& strPhase : phaseList)
+			tableHeaders << strPhase + QStringLiteral("内侧") << strPhase + QStringLiteral("外侧");
+	}
+	else
+	{
+		tableHeaders = phaseList;
+	}
+	if (m_pModelDataWidget)
+		m_pModelDataWidget->setTableLayout(tableHeaders, m_CurrentTicketConfig.m_wInsulatorSliceNum);
 
 	ui.comboBox->setEnabled(true);
 	ui.comboBox_2->setEnabled(true);
@@ -954,10 +1015,29 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 	// 删除最后一个数据
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
-    m_mapTicketMearData[strSide][strDira].pop_back();
-	
+	QVector<float>& vecData = m_mapTicketMearData[strSide][strDira];
+	if (vecData.isEmpty())return;
+
+	// 被删除的是第size个测量值：双联时奇数次为内侧、偶数次为外侧，据此定位列
+	QString strHeader = strDira;
+	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	if (bDouble)
+		strHeader += (vecData.size() % 2 == 1) ? QStringLiteral("内侧") : QStringLiteral("外侧");
+	vecData.pop_back();
+
+	// 同步删除表格/曲线中最近一个测量值，等待重测值回填
+	if (m_pModelDataWidget)
+		m_pModelDataWidget->removeLastValue(strHeader);
+
 	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 	m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_SaveInsuThreshold_Click()
+{
+    m_pConfig->m_memControlBoardConfig.m_wInsuThreshold = ui.lineEdit_15->text().toInt();
+
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_forword_Click()
@@ -1069,13 +1149,8 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfi
 	// 更新tableWidget_2选中行的数据
 	int currentRow = ui.tableWidget_2->currentRow();
 
-	ui.tableWidget_2->setItem(currentRow, 0, new QTableWidgetItem(QString::number(currentRow + 1)));
-	ui.tableWidget_2->item(currentRow, 0)->setData(Qt::UserRole, QVariant::fromValue(strTicket));
-	ui.tableWidget_2->setItem(currentRow, 1, new QTableWidgetItem(QString::fromStdString(strTicket.m_strLineName)));
-	ui.tableWidget_2->setItem(currentRow, 2, new QTableWidgetItem(QString::fromStdString(strTicket.m_strPoleNumber)));
-	ui.tableWidget_2->setItem(currentRow, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(strTicket.m_eBunchType))));
-	ui.tableWidget_2->setItem(currentRow, 4, new QTableWidgetItem(QString::number(strTicket.m_wInsulatorSliceNum)));
-	ui.tableWidget_2->setItem(currentRow, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(strTicket.m_eLoopType))));
+	SetTicketRow(currentRow, strTicket);
+	FilterTicketTable();
 
 	// 根据m_strReportId找到m_pConfig->m_vecNewTicketConfig 并覆盖strTicket
 	for (auto& ticket : m_pConfig->m_vecNewTicketConfig)
@@ -1102,6 +1177,7 @@ void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig s
 	ui.tableWidget_3->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionUnit)));
 	ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionPerson)));
 	ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strReport.m_strWorkPlace)));
+	FilterReportTable();
 
 	m_pConfig->m_vecNewReportConfig.push_back(strReport);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
@@ -1155,6 +1231,7 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal(CNewReportConfi
 	ui.tableWidget_3->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionUnit)));
 	ui.tableWidget_3->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(strReport.m_strDetectionPerson)));
 	ui.tableWidget_3->setItem(rowCount, 4, new QTableWidgetItem(QString::fromStdString(strReport.m_strWorkPlace)));
+	FilterReportTable();
 
 
 	// 根据m_strReportId找到m_pConfig->m_vecNewReportConfig 并覆盖strReport
@@ -1175,13 +1252,8 @@ void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig c
 	// 在tableWidget_2中新增一行
 	int rowCount = ui.tableWidget_2->rowCount();
 	ui.tableWidget_2->insertRow(rowCount);
-	ui.tableWidget_2->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
-	ui.tableWidget_2->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(config));
-	ui.tableWidget_2->setItem(rowCount, 1, new QTableWidgetItem(QString::fromStdString(config.m_strLineName)));
-	ui.tableWidget_2->setItem(rowCount, 2, new QTableWidgetItem(QString::fromStdString(config.m_strPoleNumber)));
-	ui.tableWidget_2->setItem(rowCount, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(config.m_eBunchType))));
-	ui.tableWidget_2->setItem(rowCount, 4, new QTableWidgetItem(QString::number(config.m_wInsulatorSliceNum)));
-	ui.tableWidget_2->setItem(rowCount, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(config.m_eLoopType))));
+	SetTicketRow(rowCount, config);
+	FilterTicketTable();
 
 	m_pConfig->m_vecNewTicketConfig.push_back(config);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
@@ -1240,6 +1312,87 @@ std::string Insulator_Zero_Value_Detection_Robot::GenerateUniqueReportId()
 	std::uniform_int_distribution<> dis(10000, 99999);  // 5位随机数
 
 	return "REPORT" + std::to_string(now) + "_" + std::to_string(dis(gen));
+}
+
+void Insulator_Zero_Value_Detection_Robot::SetTicketRow(int row, const CNewTicketConfig& ticket)
+{
+	ui.tableWidget_2->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+	ui.tableWidget_2->item(row, 0)->setData(Qt::UserRole, QVariant::fromValue(ticket));
+	ui.tableWidget_2->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(ticket.m_strLineName)));
+	ui.tableWidget_2->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(ticket.m_strPoleNumber)));
+	ui.tableWidget_2->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecBunchType(ticket.m_eBunchType))));
+	ui.tableWidget_2->setItem(row, 4, new QTableWidgetItem(QString::number(ticket.m_wInsulatorSliceNum)));
+	ui.tableWidget_2->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecLoopType(ticket.m_eLoopType))));
+	ui.tableWidget_2->setItem(row, 6, new QTableWidgetItem(QString::fromStdString(CNewTicketConfig::m_vecCurrentType(ticket.m_eCurrentType))));
+	ui.tableWidget_2->setItem(row, 7, new QTableWidgetItem(QString::fromStdString(ticket.m_strStartTime)));
+	ui.tableWidget_2->setItem(row, 8, new QTableWidgetItem(QString::fromStdString(ticket.m_strEndTime)));
+	ui.tableWidget_2->setItem(row, 9, new QTableWidgetItem(QString::fromStdString(ticket.m_strDetectionPerson)));
+}
+
+void Insulator_Zero_Value_Detection_Robot::FilterTicketTable()
+{
+	// lineEdit：线路名称（列1）；lineEdit_3：检测人员（列9），模糊匹配，留空则不参与过滤
+	QString strLineName = ui.lineEdit->text().trimmed();
+	QString strPerson = ui.lineEdit_3->text().trimmed();
+	for (int i = 0; i < ui.tableWidget_2->rowCount(); i++)
+	{
+		bool bMatch = true;
+		if (!strLineName.isEmpty())
+		{
+			QTableWidgetItem* item = ui.tableWidget_2->item(i, 1);
+			if (!item || !item->text().contains(strLineName, Qt::CaseInsensitive))
+				bMatch = false;
+		}
+		if (bMatch && !strPerson.isEmpty())
+		{
+			QTableWidgetItem* item = ui.tableWidget_2->item(i, 9);
+			if (!item || !item->text().contains(strPerson, Qt::CaseInsensitive))
+				bMatch = false;
+		}
+		ui.tableWidget_2->setRowHidden(i, !bMatch);
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::FilterReportTable()
+{
+	// lineEdit_4：线路名称（匹配线路信息列4）；lineEdit_6：检测人员（列3），模糊匹配，留空则不参与过滤
+	QString strLineName = ui.lineEdit_4->text().trimmed();
+	QString strPerson = ui.lineEdit_6->text().trimmed();
+	for (int i = 0; i < ui.tableWidget_3->rowCount(); i++)
+	{
+		bool bMatch = true;
+		if (!strLineName.isEmpty())
+		{
+			QTableWidgetItem* item = ui.tableWidget_3->item(i, 4);
+			if (!item || !item->text().contains(strLineName, Qt::CaseInsensitive))
+				bMatch = false;
+		}
+		if (bMatch && !strPerson.isEmpty())
+		{
+			QTableWidgetItem* item = ui.tableWidget_3->item(i, 3);
+			if (!item || !item->text().contains(strPerson, Qt::CaseInsensitive))
+				bMatch = false;
+		}
+		ui.tableWidget_3->setRowHidden(i, !bMatch);
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_ResetTicket_Click()
+{
+	// 清空查询条件并恢复全部显示（textChanged会自动触发过滤）
+	ui.lineEdit->clear();
+	ui.lineEdit_2->clear();
+	ui.lineEdit_3->clear();
+	FilterTicketTable();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_ResetReport_Click()
+{
+	// 清空查询条件并恢复全部显示（textChanged会自动触发过滤）
+	ui.lineEdit_4->clear();
+	ui.lineEdit_5->clear();
+	ui.lineEdit_6->clear();
+	FilterReportTable();
 }
 
 void Insulator_Zero_Value_Detection_Robot::SetVisibles(bool bVisible, int nSliceNum)

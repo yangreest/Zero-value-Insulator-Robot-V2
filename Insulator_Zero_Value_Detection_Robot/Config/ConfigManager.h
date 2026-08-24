@@ -70,6 +70,14 @@ public:
 		eFour,
 	};
 
+	// 电流类型
+	enum class CurrentType
+	{
+		// 交流，直流
+		eAC,
+		eDC,
+	};
+
 	static const std::string m_vecLoopType(LoopType loopType)
 	{
 		switch (loopType)
@@ -119,6 +127,30 @@ public:
 		else
 			return BunchType::eSingle;
 	};
+
+	static const std::string m_vecCurrentType(CurrentType currentType)
+	{
+		switch (currentType)
+		{
+		case CurrentType::eAC:
+			return "交流";
+		case CurrentType::eDC:
+			return "直流";
+		default:
+			break;
+		}
+		return "交流";
+	};
+
+	static const CurrentType m_vecCurrentType(const std::string& strCurrentType)
+	{
+		if (strCurrentType == "交流")
+			return CurrentType::eAC;
+		else if (strCurrentType == "直流")
+			return CurrentType::eDC;
+		else
+			return CurrentType::eAC;
+	};
 	// 增加一个戳
 	std::string m_strTicketId;  // 唯一标识符
 
@@ -132,6 +164,14 @@ public:
 	uint16_t m_wInsulatorSliceNum;
 	// 回路数
 	LoopType m_eLoopType;
+	// 交/直流类型
+	CurrentType m_eCurrentType = CurrentType::eAC;
+	// 开始时间（yyyy-MM-dd HH:mm）
+	std::string m_strStartTime;
+	// 结束时间（yyyy-MM-dd HH:mm）
+	std::string m_strEndTime;
+	// 检测人员
+	std::string m_strDetectionPerson;
 	//检测单位
 	std::string m_strDetectionUnit;
 	// 备注信息

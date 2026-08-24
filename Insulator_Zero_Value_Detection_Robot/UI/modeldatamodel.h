@@ -7,6 +7,7 @@
 #include <QAbstractTableModel>
 #include <QMultiHash>
 #include <QRect>
+#include <QStringList>
 
 class ModelDataModel : public QAbstractTableModel
 {
@@ -21,12 +22,18 @@ public:
     bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole);
     Qt::ItemFlags flags(const QModelIndex &index) const;
 
+    // 根据表头（列数）与行数重建表格，未测量单元格为空（NaN）
+    void setTableLayout(const QStringList &headers, int rowCount);
+    // 根据表头内容查找列序号，未找到返回-1
+    int columnIndex(const QString &header) const;
+
     void addMapping(const QString &color, const QRect &area);
     void clearMapping() { m_mapping.clear(); }
 
 private:
     QList<QList<qreal> *> m_data;
     QMultiHash<QString, QRect> m_mapping;
+    QStringList m_headers;
     int m_columnCount;
     int m_rowCount;
 };
