@@ -410,14 +410,14 @@ border: 1px solid #0D1321;
                 <string notr="true">color: #FFFFFF;</string>
                </property>
                <property name="text">
-                <string>工单管理</string>
+                <string>工单详情</string>
                </property>
               </widget>
              </item>
              <item>
               <widget class="QLabel" name="label_29">
                <property name="text">
-                <string>工单详情</string>
+                <string/>
                </property>
                <property name="alignment">
                 <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
@@ -5301,104 +5301,6 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
              <number>2</number>
             </property>
             <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_23">
-              <property name="topMargin">
-               <number>0</number>
-              </property>
-              <item>
-               <widget class="QPushButton" name="pushButton_22">
-                <property name="styleSheet">
-                 <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                </property>
-                <property name="text">
-                 <string>保存</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="pushButton_24">
-                <property name="styleSheet">
-                 <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                </property>
-                <property name="text">
-                 <string>PushButton</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="pushButton_23">
-                <property name="styleSheet">
-                 <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                </property>
-                <property name="text">
-                 <string>PushButton</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="horizontalSpacer_13">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-             </layout>
-            </item>
-            <item>
              <layout class="QHBoxLayout" name="horizontalLayout_21">
               <property name="topMargin">
                <number>0</number>
@@ -5457,253 +5359,57 @@ border :none;
                  </item>
                  <item>
                   <layout class="QGridLayout" name="gridLayout_2">
-                   <item row="2" column="4">
-                    <widget class="QPushButton" name="pushButton_8">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>设置</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="3">
-                    <widget class="QLineEdit" name="lineEdit_9">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="1" column="5">
-                    <widget class="QLabel" name="label_100">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>OTA升级</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="5">
-                    <widget class="QLabel" name="label_101">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>摄像头IP</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="0" column="4">
-                    <widget class="QPushButton" name="pushButton_3">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>设置</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="1">
-                    <widget class="QLabel" name="label_98">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>机器人IP</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="1" column="1">
-                    <widget class="QLabel" name="label_97">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>电机速度</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="7">
-                    <widget class="QPushButton" name="pushButton_9">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>升级</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="2" column="6">
-                    <widget class="QLineEdit" name="lineEdit_10">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="1" column="4">
-                    <widget class="QPushButton" name="pushButton_6">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>设置</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="0" column="6">
-                    <layout class="QVBoxLayout" name="verticalLayout_17">
+                   <item row="0" column="3">
+                    <layout class="QVBoxLayout" name="verticalLayout_18">
                      <property name="leftMargin">
                       <number>0</number>
                      </property>
                      <item>
-                      <widget class="QLineEdit" name="lineEdit_8">
+                      <widget class="QLineEdit" name="lineEdit_7">
                        <property name="maximumSize">
                         <size>
                          <width>200</width>
                          <height>16777215</height>
                         </size>
                        </property>
+                       <property name="styleSheet">
+                        <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                       </property>
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLineEdit" name="lineEdit_12">
+                      <widget class="QLineEdit" name="lineEdit_14">
                        <property name="maximumSize">
                         <size>
                          <width>200</width>
                          <height>16777215</height>
                         </size>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_13">
+                       <property name="maximumSize">
+                        <size>
+                         <width>200</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
                        </property>
                       </widget>
                      </item>
                     </layout>
-                   </item>
-                   <item row="1" column="3">
-                    <widget class="QComboBox" name="comboBox_3">
-                     <item>
-                      <property name="text">
-                       <string>高速</string>
-                      </property>
-                     </item>
-                     <item>
-                      <property name="text">
-                       <string>中速</string>
-                      </property>
-                     </item>
-                     <item>
-                      <property name="text">
-                       <string>低速</string>
-                      </property>
-                     </item>
-                    </widget>
-                   </item>
-                   <item row="1" column="7">
-                    <widget class="QPushButton" name="pushButton_7">
-                     <property name="styleSheet">
-                      <string notr="true">
-QPushButton
-{
-    background-color:#222833;
-    color:white;
-    border:1px solid #444c5a;
-    border-radius:4px;
-    padding:4px 12px;
-}
-QPushButton:hover
-{
-    border-color:#60a5fa;
-}
-QPushButton:pressed
-{
-    background-color:#303846;
-}</string>
-                     </property>
-                     <property name="text">
-                      <string>升级</string>
-                     </property>
-                    </widget>
                    </item>
                    <item row="0" column="7">
                     <layout class="QVBoxLayout" name="verticalLayout_10">
@@ -5776,66 +5482,6 @@ QPushButton:pressed
                      </item>
                     </layout>
                    </item>
-                   <item row="1" column="6">
-                    <widget class="QLineEdit" name="lineEdit_11">
-                     <property name="maximumSize">
-                      <size>
-                       <width>200</width>
-                       <height>16777215</height>
-                      </size>
-                     </property>
-                    </widget>
-                   </item>
-                   <item row="0" column="3">
-                    <layout class="QVBoxLayout" name="verticalLayout_18">
-                     <property name="leftMargin">
-                      <number>0</number>
-                     </property>
-                     <item>
-                      <widget class="QLineEdit" name="lineEdit_7">
-                       <property name="maximumSize">
-                        <size>
-                         <width>200</width>
-                         <height>16777215</height>
-                        </size>
-                       </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <widget class="QLineEdit" name="lineEdit_14">
-                       <property name="maximumSize">
-                        <size>
-                         <width>200</width>
-                         <height>16777215</height>
-                        </size>
-                       </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <widget class="QLineEdit" name="lineEdit_13">
-                       <property name="maximumSize">
-                        <size>
-                         <width>200</width>
-                         <height>16777215</height>
-                        </size>
-                       </property>
-                      </widget>
-                     </item>
-                    </layout>
-                   </item>
-                   <item row="0" column="5">
-                    <widget class="QLabel" name="label_99">
-                     <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                       <horstretch>0</horstretch>
-                       <verstretch>0</verstretch>
-                      </sizepolicy>
-                     </property>
-                     <property name="text">
-                      <string>校准模块</string>
-                     </property>
-                    </widget>
-                   </item>
                    <item row="0" column="1">
                     <layout class="QVBoxLayout" name="verticalLayout_19">
                      <property name="leftMargin">
@@ -5882,6 +5528,356 @@ QPushButton:pressed
                      </item>
                     </layout>
                    </item>
+                   <item row="1" column="3">
+                    <widget class="QComboBox" name="comboBox_3">
+                     <item>
+                      <property name="text">
+                       <string>高速</string>
+                      </property>
+                     </item>
+                     <item>
+                      <property name="text">
+                       <string>中速</string>
+                      </property>
+                     </item>
+                     <item>
+                      <property name="text">
+                       <string>低速</string>
+                      </property>
+                     </item>
+                    </widget>
+                   </item>
+                   <item row="2" column="4">
+                    <widget class="QPushButton" name="pushButton_8">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="6">
+                    <widget class="QLineEdit" name="lineEdit_11">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                     <property name="styleSheet">
+                      <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="3">
+                    <widget class="QLineEdit" name="lineEdit_9">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                     <property name="styleSheet">
+                      <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="7">
+                    <widget class="QPushButton" name="pushButton_9">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="4">
+                    <widget class="QPushButton" name="pushButton_6">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="5">
+                    <widget class="QLabel" name="label_99">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>校准模块</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="6">
+                    <widget class="QLineEdit" name="lineEdit_10">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                     <property name="styleSheet">
+                      <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="5">
+                    <widget class="QLabel" name="label_101">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>摄像头IP</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QLabel" name="label_98">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>机器人IP</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QLabel" name="label_97">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>电机速度</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="5">
+                    <widget class="QLabel" name="label_100">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>OTA升级</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="6">
+                    <layout class="QVBoxLayout" name="verticalLayout_17">
+                     <property name="leftMargin">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_8">
+                       <property name="maximumSize">
+                        <size>
+                         <width>200</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_12">
+                       <property name="maximumSize">
+                        <size>
+                         <width>200</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </item>
+                   <item row="0" column="4">
+                    <widget class="QPushButton" name="pushButton_3">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="7">
+                    <widget class="QPushButton" name="pushButton_7">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>升级</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QLabel" name="label_103">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="text">
+                      <string>绝缘阈值</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="3">
+                    <widget class="QLineEdit" name="lineEdit_15">
+                     <property name="maximumSize">
+                      <size>
+                       <width>200</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                     <property name="styleSheet">
+                      <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="4">
+                    <widget class="QPushButton" name="pushButton_29">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>设置</string>
+                     </property>
+                    </widget>
+                   </item>
                   </layout>
                  </item>
                 </layout>
@@ -5913,7 +5909,7 @@ border :none;
                  <item>
                   <widget class="QLabel" name="label_95">
                    <property name="text">
-                    <string>账号安全</string>
+                    <string/>
                    </property>
                   </widget>
                  </item>
@@ -6194,7 +6190,7 @@ border :none;
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>

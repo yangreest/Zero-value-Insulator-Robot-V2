@@ -35,6 +35,8 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	ui.labelTicketLineName->setText("");
 	ui.labelPoleNumber->setText("");
 
+	ui.groupBox_7->setVisible(false);
+
 	// 获取结果，执行下一个
 	if (overlayLabel == nullptr)
 	{
@@ -94,6 +96,16 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	// 如果有其他表格也需要设置
 	ui.tableWidget_2->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	ui.tableWidget_3->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+	ui.lineEdit_7->setText(QString::number(m_pConfig->m_memControlBoardConfig.m_cUpAngle));				// 探针向内的角度
+    ui.lineEdit_14->setText(QString::number(m_pConfig->m_memControlBoardConfig.m_cDownAngle));			// 探针复原的角度
+    ui.lineEdit_13->setText(QString::number(m_pConfig->m_memControlBoardConfig.m_cUpAngle2));			// 探针向外的角度
+
+	ui.comboBox_3->setCurrentIndex(m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);				// 控制电机速度
+
+	ui.lineEdit_9->setText(QString::fromStdString(m_pConfig->m_memControlBoardConfig.m_strIp));			// 设备IP
+
+	ui.lineEdit_10->setText(QString::fromStdString(m_pConfig->m_memCCameraConfig.m_strLeftIp));         // 左摄像头IP	
 }
 
 void Insulator_Zero_Value_Detection_Robot::InitParam()
@@ -225,6 +237,9 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.comboBox_2, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
 	connect(ui.comboBox, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
 
+
+	ui.pBInspection->setChecked(true);
+	On_Inspection_Click();
 }
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState(int t, const ControllerState* p)
@@ -238,17 +253,10 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	if (m_nTimeCount++ % 10 == 0)
 	{
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 2, 0);
-
 		//m_pComDevice->Write(cmds.data(), cmds.size());
-
-
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 3, 0);
-
 		//m_pComDevice->Write(cmds.data(), cmds.size());
-
-
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 4, 0);
-
 		//m_pComDevice->Write(cmds.data(), cmds.size());
 	}
 
@@ -1097,6 +1105,45 @@ void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig s
 
 	m_pConfig->m_vecNewReportConfig.push_back(strReport);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+
+	// 将m_mapTicketMearData按照map层级和顺序全部保存到csv
+	QString path = QString("MearData_%1.csv").arg(QString::fromStdString(strReport.m_strReportId));
+    std::string strCsvPath = WHSD_Tools::GetAbsolutePath(path.toStdString().c_str());
+    QFile csvFile(QString::fromStdString(strCsvPath));
+    if (csvFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+		//csvFile.write("\xEF\xBB\xBF", 3);
+
+        QTextStream stream(&csvFile);
+		stream.setEncoding(QStringConverter::Utf8);
+		stream.setGenerateByteOrderMark(true);
+        //stream << "\xEF\xBB\xBF"; // UTF-8 BOM，防止Excel打开中文乱码
+        //stream << "侧别,方向,序号,测量值\n";
+
+        // 第一层map：侧别（QMap按key有序）
+        for (auto itSide = m_mapTicketMearData.constBegin(); itSide != m_mapTicketMearData.constEnd(); ++itSide)
+        {
+            // 第二层map：方向（QMap按key有序）
+            for (auto itDira = itSide.value().constBegin(); itDira != itSide.value().constEnd(); ++itDira)
+            {
+				stream << itSide.key() << ","
+					<< itDira.key() << ",";
+                // vector：按存入顺序依次导出
+                const QVector<float>& vecData = itDira.value();
+                for (int i = 0; i < vecData.size(); ++i)
+                {
+             
+					stream << QString::number(vecData[i], 'f', 3) << ",";
+                }
+				stream << "\n";
+            }
+        }
+        csvFile.close();
+    }
+    else
+    {
+        QMessageBox::warning(this, "错误", QString("测量数据CSV保存失败：\n%1").arg(strCsvPath));
+    }
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal(CNewReportConfig strReport)

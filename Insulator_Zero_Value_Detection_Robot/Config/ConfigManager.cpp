@@ -57,11 +57,21 @@ void CConfigManager::Read(const std::string& filePath)
 			{
 				m_memControlBoardConfig.m_cDownAngle = nIntTemp;
 			}
+            auto d7m = deviceBoard->FirstChildElement("UpAngle2");
+            if (d7m != nullptr && d7m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+            {
+                m_memControlBoardConfig.m_cUpAngle2 = nIntTemp;
+            }
 			auto d5m = deviceBoard->FirstChildElement("WalkMotorSpeed");
 			if (d5m != nullptr && d5m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
 			{
 				m_memControlBoardConfig.m_cWalkMotorSpeed = nIntTemp;
 			}
+            auto d6m = deviceBoard->FirstChildElement("InsuThreshold");
+            if (d6m != nullptr && d6m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+            {
+                m_memControlBoardConfig.m_wInsuThreshold = nIntTemp;
+            }
 
 		}
 	}
@@ -257,6 +267,14 @@ void CConfigManager::Write(const std::string& filePath)
 		tinyxml2::XMLElement* speedElem = doc.NewElement("WalkMotorSpeed");
 		speedElem->SetText(m_memControlBoardConfig.m_cWalkMotorSpeed);
 		deviceBoard->InsertEndChild(speedElem);
+
+        tinyxml2::XMLElement* upElem2 = doc.NewElement("UpAngle2");
+        upElem2->SetText(m_memControlBoardConfig.m_cUpAngle2);
+		upElem2->InsertEndChild(upElem2);
+
+        tinyxml2::XMLElement* insuThresholdElem = doc.NewElement("InsuThreshold");
+        insuThresholdElem->SetText(m_memControlBoardConfig.m_wInsuThreshold);
+		insuThresholdElem->InsertEndChild(insuThresholdElem);
 	}
 
 	// --- 写入 Camera ---
