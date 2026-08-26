@@ -14,6 +14,7 @@
 #include <QVBoxLayout>
 #include <QDialog>
 #include <QKeyEvent>
+#include <QDir>
 #include <random>
 
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
@@ -867,7 +868,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Report_Click()
 	if (overlayLabel) overlayLabel->hide();
 }
 
-void Insulator_Zero_Value_Detection_Robot::captureCurrentWindow()
+void Insulator_Zero_Value_Detection_Robot::captureCurrentWindow(bool bInside)
 {
 	// 获取当前窗口的句柄（Windows）/ID（Linux）
 	WId windowId = ui.label_9->winId();
@@ -880,9 +881,42 @@ void Insulator_Zero_Value_Detection_Robot::captureCurrentWindow()
 
 	// 截取指定窗口
 	QPixmap pixmap = screen->grabWindow(windowId);
+	if (pixmap.isNull()) {
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("测量截图失败：像素数据为空");
+		return;
+	}
 
-	// 保存截图
-	savePixmap(pixmap);
+	// 测量截图保存路径：与软件根目录同级的 测量图像/工单名_杆塔号/相别/
+	QString filePath = GetMeasureImageFileName(bInside);
+	if (!pixmap.save(filePath))
+	{
+		// 测量流程中弹窗模态屏蔽主窗口，不弹提示框，仅记日志
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write(("测量截图保存失败：" + filePath.toStdString()));
+	}
+}
+
+QString Insulator_Zero_Value_Detection_Robot::GetMeasureImageFileName(bool bInside)
+{
+	// 存图根目录与软件根目录（exe目录）同级：../测量图像/
+	QString strRoot = QDir::cleanPath(
+		QDir(QString::fromStdString(WHSD_Tools::GetExeDirectory())).filePath(QStringLiteral("../测量图像")));
+	// 一级子目录：工单名（线路名称）_杆塔号；二级子目录：当前comboBox（相别）
+	QString strTicket = QString::fromStdString(m_CurrentTicketConfig.m_strLineName).trimmed();
+	QString strPole = QString::fromStdString(m_CurrentTicketConfig.m_strPoleNumber).trimmed();
+	QString strPhase = ui.comboBox->currentText();
+	QString strDir = QDir::cleanPath(strRoot + "/" + strTicket + "_" + strPole + "/" + strPhase);
+	QDir().mkpath(strDir);
+
+	// 序号：同一相每完成一次测量追加一对内/外侧数据，当前侧序号 = 已有对数 + 1（重测后序号自动回退）
+	QString strSide = ui.comboBox_2->currentText();
+	int nSeq = m_mapTicketMearData[strSide][strPhase].size() / 2 + 1;
+	QString strSideName = bInside ? QStringLiteral("内测") : QStringLiteral("外侧");
+
+	// 文件名：内测/外侧_序号_时间（含毫秒防重名）
+	return QString("%1/%2_%3_%4.png").arg(strDir, strSideName).arg(nSeq)
+		.arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss_zzz"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click()
@@ -1030,6 +1064,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 
 	QTimer::singleShot(4000, this, [this]() {
 		UpdateMeasureWaitDialog(QStringLiteral("正在执行第一次测量（内测），等待结果..."));
+		captureCurrentWindow(true);	// 到位后先截图保存（内测），再执行第一次测量
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 		m_pComDevice->Write(cmds.data(), cmds.size());
 		m_nMeasureStep = 1;
@@ -1048,6 +1083,7 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 
 		QTimer::singleShot(4000, this, [this]() {
 			UpdateMeasureWaitDialog(QStringLiteral("正在执行第二次测量（外侧），等待结果..."));
+			captureCurrentWindow(false);	// 到位后先截图保存（外侧），再执行第二次测量
 			auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			m_nMeasureStep = 2;

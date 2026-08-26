@@ -42,7 +42,7 @@ private slots:
 	void On_Report_Click();
 	void On_ZeroTest_Click();
 	void On_Setting_Click();
-	void captureCurrentWindow();
+	void captureCurrentWindow(bool bInside = true);
 	void On_SetFileName_Click();
 	void On_NewTicket_Click();
 	void On_NewReport_Click();
@@ -95,6 +95,9 @@ private:
 	void CallBack_ZeroValue(float* p);
 
 	void savePixmap(const QPixmap& pixmap);
+
+	// 测量流程中截图保存，文件名含内测/外侧标记、序号与时间（仅UI线程调用）
+	QString GetMeasureImageFileName(bool bInside);
 
 	std::string GenerateUniqueTicketId();
 	std::string GenerateUniqueReportId();
