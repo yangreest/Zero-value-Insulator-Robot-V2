@@ -1140,6 +1140,102 @@ bool Insulator_Zero_Value_Detection_Robot::eventFilter(QObject* obj, QEvent* eve
 	return QMainWindow::eventFilter(obj, event);
 }
 
+void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
+{
+	// 键盘控制（与手柄操作对应，忽略长按自动重复）：
+	// Q-探针向内  E-探针向外  R-探针复原  A/←-行走左  D/→-行走右  S-停止  空格-开始测量
+	if (!event->isAutoRepeat())
+	{
+		switch (event->key())
+		{
+		case Qt::Key_Q:	// 探针向内（内测）
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("内上");
+			return;
+		}
+		case Qt::Key_E:	// 探针向外（外侧）
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("外上");
+			return;
+		}
+		case Qt::Key_R:	// 探针复原
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+				m_pConfig->m_memControlBoardConfig.m_cDownAngle);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("复原");
+			return;
+		}
+		case Qt::Key_A:
+		case Qt::Key_Left:	// 行走向左
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02,
+				m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("左");
+			return;
+		}
+		case Qt::Key_D:
+		case Qt::Key_Right:	// 行走向右
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01,
+				m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("右");
+			return;
+		}
+		case Qt::Key_S:	// 停止行走
+		{
+			On_stop_Click();
+			ui.label_29->setText("");
+			return;
+		}
+		case Qt::Key_Space:	// 开始测量（流程内部已防重复触发）
+		{
+			On_Test_Click();
+			return;
+		}
+		default:
+		{
+			break;
+		}
+		}
+	}
+	QMainWindow::keyPressEvent(event);
+}
+
+void Insulator_Zero_Value_Detection_Robot::keyReleaseEvent(QKeyEvent* event)
+{
+	// 松开行走键时停止行走电机（与手柄松开方向键行为一致）
+	if (!event->isAutoRepeat())
+	{
+		switch (event->key())
+		{
+		case Qt::Key_A:
+		case Qt::Key_D:
+		case Qt::Key_Left:
+		case Qt::Key_Right:
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceStop(0x01);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("");
+			return;
+		}
+		default:
+		{
+			break;
+		}
+		}
+	}
+	QMainWindow::keyReleaseEvent(event);
+}
+
 void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 {
 	// 删除最后一个数据

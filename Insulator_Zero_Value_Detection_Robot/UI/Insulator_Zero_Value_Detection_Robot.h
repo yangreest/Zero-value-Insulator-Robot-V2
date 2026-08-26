@@ -18,6 +18,7 @@
 #include "UI/modeldatawidget.h"
 
 class QDialog;
+class QKeyEvent;
 
 class Insulator_Zero_Value_Detection_Robot : public QMainWindow
 {
@@ -118,6 +119,10 @@ private:
 protected:
 	// 拦截等待弹窗的Esc/关闭事件，保证测量结束前不可关闭
 	bool eventFilter(QObject* obj, QEvent* event) override;
+
+	// 键盘控制：探针位置/行走/停止/开始测量（与手柄操作对应）
+	void keyPressEvent(QKeyEvent* event) override;
+	void keyReleaseEvent(QKeyEvent* event) override;
 
 private:
 
