@@ -655,7 +655,7 @@ void CWHSDControlBoardProtocol::LoopSendHeartBeat()
 		if (!m_bPauseHeartBeat)
 		{
 			auto needSendData = GetCmdData(0x00, { m_cPackNumber });
-			//SendData(needSendData.data(), needSendData.size());
+			SendData(needSendData.data(), needSendData.size());
 		}
 	}
 }
