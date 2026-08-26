@@ -449,7 +449,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 	}
 	m_bLastButton = tp.buttons[5];
 
-	//ui.label_20->setText(m_bLastButton ? "ON" : "OFF");
+	//ui.label_29->setText(m_bLastButton ? "ON" : "OFF");
 	if (m_nLastDir == 0)
 	{
 		switch (tp.dpad)
@@ -459,14 +459,14 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cUpAngle);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			//ui.label_2->setText("上");
+			ui.label_29->setText("内上");
 			break;
 		}
 		case 2:
 		{
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01, m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			//ui.label_2->setText("右");
+			ui.label_29->setText("右");
 			break;
 		}
 		case 3:
@@ -474,20 +474,28 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cDownAngle);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			//ui.label_2->setText("下");
+			ui.label_29->setText("复原");
 			break;
 		}
 		case 4:
 		{
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02, m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 			m_pComDevice->Write(cmds.data(), cmds.size());
-			//ui.label_2->setText("左");
+			ui.label_29->setText("左");
+			break;
+		}
+		case 5: // 探针向外
+		{
+			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			ui.label_29->setText("外上");
 			break;
 		}
 		case 0:
 		default:
 		{
-			//ui.label_2->setText("");
+			ui.label_29->setText("");
 			break;
 		}
 		}

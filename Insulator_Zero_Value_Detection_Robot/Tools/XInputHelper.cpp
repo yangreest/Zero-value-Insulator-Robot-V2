@@ -69,7 +69,7 @@ bool CXInputHelper::ReadControllerState()
 	m_memControllerState.buttons[13] = (xState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
 
 	m_memControllerState.dpad = 0;
-	if (m_memControllerState.buttons[10])
+	if (m_memControllerState.buttons[2])
 	{
 		m_memControllerState.dpad = 1;
 	}
@@ -77,13 +77,17 @@ bool CXInputHelper::ReadControllerState()
 	{
 		m_memControllerState.dpad = 2;
 	}
-	else if (m_memControllerState.buttons[12])
+	else if (m_memControllerState.buttons[0])
 	{
 		m_memControllerState.dpad = 3;
 	}
 	else if (m_memControllerState.buttons[13])
 	{
 		m_memControllerState.dpad = 4;
+	}
+	else if (m_memControllerState.buttons[1])
+	{
+		m_memControllerState.dpad = 5; // 探针向外
 	}
 
 	// 处理扳机键 (应用死区)

@@ -45,8 +45,6 @@ void CConfigManager::Read(const std::string& filePath)
 			{
 				m_memControlBoardConfig.m_bFactoryMode = nIntTemp > 0;
 			}
-
-
 			auto d3m = deviceBoard->FirstChildElement("UpAngle");
 			if (d3m != nullptr && d3m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
 			{
@@ -57,11 +55,6 @@ void CConfigManager::Read(const std::string& filePath)
 			{
 				m_memControlBoardConfig.m_cDownAngle = nIntTemp;
 			}
-            auto d7m = deviceBoard->FirstChildElement("UpAngle2");
-            if (d7m != nullptr && d7m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
-            {
-                m_memControlBoardConfig.m_cUpAngle2 = nIntTemp;
-            }
 			auto d5m = deviceBoard->FirstChildElement("WalkMotorSpeed");
 			if (d5m != nullptr && d5m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
 			{
@@ -72,7 +65,11 @@ void CConfigManager::Read(const std::string& filePath)
             {
                 m_memControlBoardConfig.m_wInsuThreshold = nIntTemp;
             }
-
+			auto d7m = deviceBoard->FirstChildElement("UpAngle2");
+			if (d7m != nullptr && d7m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+			{
+				m_memControlBoardConfig.m_cUpAngle2 = nIntTemp;
+			}
 		}
 	}
 	{
