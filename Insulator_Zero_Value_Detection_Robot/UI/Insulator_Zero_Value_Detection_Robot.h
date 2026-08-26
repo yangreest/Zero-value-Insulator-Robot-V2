@@ -17,6 +17,8 @@
 #include "UI/contentwidget.h"
 #include "UI/modeldatawidget.h"
 
+class QDialog;
+
 class Insulator_Zero_Value_Detection_Robot : public QMainWindow
 {
 	Q_OBJECT
@@ -85,7 +87,7 @@ private:
 
 	void CallBack_ControllerState(int t, const ControllerState* p);
 
-	void RefreshControllerState(const ControllerState* p);
+	//void RefreshControllerState(const ControllerState* p);
 
 	void CallBack_SensorValue(CSensorData* p);
 
@@ -101,6 +103,23 @@ private:
 
 	// 填充tableWidget_2指定行的工单数据（全部列）
 	void SetTicketRow(int row, const CNewTicketConfig& ticket);
+
+	// 测量流程（内测->第一次测量->外侧->第二次测量->复原）推进，nStep为结果对应的步骤（1=内测/2=外侧）
+	void OnMeasureResult(int nStep);
+
+	// 测量期间禁用/恢复相关按钮与下拉框（弹窗模态已挡界面，此处兼顾手柄等外部触发）
+	void SetMeasureUiEnabled(bool bEnable);
+
+	// 显示/更新/关闭不可关闭的测量等待弹窗（显示在主窗口最上方）
+	void ShowMeasureWaitDialog(const QString& strText);
+	void UpdateMeasureWaitDialog(const QString& strText);
+	void HideMeasureWaitDialog();
+
+protected:
+	// 拦截等待弹窗的Esc/关闭事件，保证测量结束前不可关闭
+	bool eventFilter(QObject* obj, QEvent* event) override;
+
+private:
 
 	// 根据lineEdit、lineEdit_3过滤tableWidget_2
 	void FilterTicketTable();
@@ -166,6 +185,13 @@ private:
 	QMap<QString, QMap<QString, QVector<float>>> m_mapTicketMearData;
 
 	CNewTicketConfig m_CurrentTicketConfig;
+
+	// 测量流程状态：0=空闲 1=等待第一次（内测）结果 2=等待第二次（外侧）结果，仅UI线程读写
+	int m_nMeasureStep = 0;
+
+	// 测量等待弹窗及其提示文本（懒创建，复用）
+	QDialog* m_pMeasureWaitDialog = nullptr;
+	QLabel* m_pMeasureWaitLabel = nullptr;
 
 public:
 	// 摄像头

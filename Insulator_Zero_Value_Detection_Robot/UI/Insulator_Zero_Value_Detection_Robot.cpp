@@ -12,6 +12,8 @@
 #include <QDateTime>
 #include <QFileDialog.h>
 #include <QVBoxLayout>
+#include <QDialog>
+#include <QKeyEvent>
 #include <random>
 
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
@@ -440,16 +442,6 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 		memcpy(&tp, &m_memControllerState, sizeof(ControllerState));
 	}
 
-
-	if (!m_bLastButton && tp.buttons[5])
-	{
-		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
-
-		m_pComDevice->Write(cmds.data(), cmds.size());
-	}
-	m_bLastButton = tp.buttons[5];
-
-	//ui.label_29->setText(m_bLastButton ? "ON" : "OFF");
 	if (m_nLastDir == 0)
 	{
 		switch (tp.dpad)
@@ -492,6 +484,11 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 			ui.label_29->setText("外上");
 			break;
 		}
+        case 6: // 探针检测
+		{
+			On_Test_Click();
+			break;
+		}
 		case 0:
 		default:
 		{
@@ -516,12 +513,12 @@ void Insulator_Zero_Value_Detection_Robot::ComDeviceConnectionChanged(const bool
 	m_bControlBroadConnected = connected;
 }
 
-void Insulator_Zero_Value_Detection_Robot::RefreshControllerState(const ControllerState* p)
-{
-	// 刷新控制器状态
-	std::lock_guard<std::mutex> g(m_mutexXInput);
-	memcpy(&m_memControllerState, p, sizeof(ControllerState));
-}
+//void Insulator_Zero_Value_Detection_Robot::RefreshControllerState(const ControllerState* p)
+//{
+//	// 刷新控制器状态
+//	std::lock_guard<std::mutex> g(m_mutexXInput);
+//	memcpy(&m_memControllerState, p, sizeof(ControllerState));
+//}
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue(CSensorData* p)
 {
@@ -552,6 +549,12 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue(CSensorData* p)
 void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 {
 	float value = p[0];
+
+	// 测量流程：记录本次结果所属步骤，切到UI线程推进后续流程（回调在协议线程）
+	int nMeasureStep = m_nMeasureStep;
+	QMetaObject::invokeMethod(this, [this, nMeasureStep]() {
+		OnMeasureResult(nMeasureStep);
+	}, Qt::QueuedConnection);
 
 	overlayLabel->setWindowFlags(Qt::Widget);
 	overlayLabel->setStyleSheet("background-color:rgba(0,0,0,20);color:white;font-size:20px;");
@@ -1005,6 +1008,9 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
         QMessageBox::information(this, "提示", "请加载一个工单");
 		return;
 	}
+	// 上一次测量流程未结束，忽略重复触发（兼顾手柄等外部触发）
+	if (m_nMeasureStep != 0)
+		return;
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
 	QVector<float> vecData = m_mapTicketMearData[strSide][strDira];
@@ -1014,8 +1020,124 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
         return;
 	}
 
-	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+	// 第一步：探针指向内测，按钮禁用并弹出不可关闭的等待窗，等待4s到位后执行第一次测量
+	SetMeasureUiEnabled(false);
+	ShowMeasureWaitDialog(QStringLiteral("探针指向内测，等待到位..."));
+
+	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+		m_pConfig->m_memControlBoardConfig.m_cUpAngle);
 	m_pComDevice->Write(cmds.data(), cmds.size());
+
+	QTimer::singleShot(4000, this, [this]() {
+		UpdateMeasureWaitDialog(QStringLiteral("正在执行第一次测量（内测），等待结果..."));
+		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+		m_pComDevice->Write(cmds.data(), cmds.size());
+		m_nMeasureStep = 1;
+	});
+}
+
+void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
+{
+	if (nStep == 1)
+	{
+		// 第一次（内测）结果已收到：探针打到外侧，等待4s到位后执行第二次测量
+		UpdateMeasureWaitDialog(QStringLiteral("探针切换到外侧，等待到位..."));
+		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+			m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
+		m_pComDevice->Write(cmds.data(), cmds.size());
+
+		QTimer::singleShot(4000, this, [this]() {
+			UpdateMeasureWaitDialog(QStringLiteral("正在执行第二次测量（外侧），等待结果..."));
+			auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+			m_pComDevice->Write(cmds.data(), cmds.size());
+			m_nMeasureStep = 2;
+		});
+	}
+	else if (nStep == 2)
+	{
+		// 第二次（外侧）结果已收到：探针复原，关闭等待窗并恢复按钮，测量结束
+		UpdateMeasureWaitDialog(QStringLiteral("探针复原中..."));
+		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+			m_pConfig->m_memControlBoardConfig.m_cDownAngle);
+		m_pComDevice->Write(cmds.data(), cmds.size());
+
+		m_nMeasureStep = 0;
+		HideMeasureWaitDialog();
+		SetMeasureUiEnabled(true);
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::SetMeasureUiEnabled(bool bEnable)
+{
+	ui.pBTest->setEnabled(bEnable);
+	ui.pBRetest->setEnabled(bEnable);
+	ui.comboBox->setEnabled(bEnable);
+	ui.comboBox_2->setEnabled(bEnable);
+	// 行走/探针/测量等手动操作按钮
+	ui.pushButton_14->setEnabled(bEnable);
+	ui.pushButton_15->setEnabled(bEnable);
+	ui.pushButton_26->setEnabled(bEnable);
+	ui.pushButton_17->setEnabled(bEnable);
+	ui.pushButton_25->setEnabled(bEnable);
+	ui.pushButton_27->setEnabled(bEnable);
+	ui.pushButton_28->setEnabled(bEnable);
+}
+
+void Insulator_Zero_Value_Detection_Robot::ShowMeasureWaitDialog(const QString& strText)
+{
+	if (m_pMeasureWaitDialog == nullptr)
+	{
+		m_pMeasureWaitDialog = new QDialog(this);
+		m_pMeasureWaitDialog->setWindowTitle(QStringLiteral("测量中"));
+		// 无关闭按钮，并拦截Esc/关闭事件，测量结束前不可关闭
+		m_pMeasureWaitDialog->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
+		m_pMeasureWaitDialog->setModal(true);
+		m_pMeasureWaitDialog->installEventFilter(this);
+
+		m_pMeasureWaitLabel = new QLabel(m_pMeasureWaitDialog);
+		m_pMeasureWaitLabel->setAlignment(Qt::AlignCenter);
+		m_pMeasureWaitLabel->setMinimumSize(320, 40);
+		m_pMeasureWaitLabel->setStyleSheet("font-size:18px;");
+		auto pLayout = new QVBoxLayout(m_pMeasureWaitDialog);
+		pLayout->addWidget(m_pMeasureWaitLabel);
+	}
+	m_pMeasureWaitLabel->setText(strText);
+	m_pMeasureWaitDialog->adjustSize();
+	// 显示在主窗口最上方居中位置（模态弹窗置顶，屏蔽下层界面操作）
+	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
+		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
+	m_pMeasureWaitDialog->show();
+	m_pMeasureWaitDialog->raise();
+}
+
+void Insulator_Zero_Value_Detection_Robot::UpdateMeasureWaitDialog(const QString& strText)
+{
+	if (m_pMeasureWaitDialog == nullptr || !m_pMeasureWaitDialog->isVisible())
+		return;
+	m_pMeasureWaitLabel->setText(strText);
+	m_pMeasureWaitDialog->adjustSize();
+	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
+		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
+}
+
+void Insulator_Zero_Value_Detection_Robot::HideMeasureWaitDialog()
+{
+	if (m_pMeasureWaitDialog != nullptr)
+		m_pMeasureWaitDialog->hide();
+}
+
+bool Insulator_Zero_Value_Detection_Robot::eventFilter(QObject* obj, QEvent* event)
+{
+	if (m_pMeasureWaitDialog != nullptr && obj == m_pMeasureWaitDialog)
+	{
+		// 屏蔽Esc与关闭事件，弹窗只能由测量流程关闭
+		if (event->type() == QEvent::Close)
+			return true;
+		if (event->type() == QEvent::KeyPress &&
+			static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape)
+			return true;
+	}
+	return QMainWindow::eventFilter(obj, event);
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()

@@ -89,6 +89,11 @@ bool CXInputHelper::ReadControllerState()
 	{
 		m_memControllerState.dpad = 5; // 探针向外
 	}
+	else if (m_memControllerState.buttons[3])
+	{
+		m_memControllerState.dpad = 6; // 测量任务
+	}
+
 
 	// 处理扳机键 (应用死区)
 	m_memControllerState.leftTrigger = (xState.Gamepad.bLeftTrigger > TRIGGER_DEADZONE)
