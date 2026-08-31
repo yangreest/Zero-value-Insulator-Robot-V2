@@ -33,6 +33,8 @@ Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidg
 Insulator_Zero_Value_Detection_Robot::~Insulator_Zero_Value_Detection_Robot()
 {
 	continueStreaming = false;
+	// 停止录像标志，避免取流线程继续往缓存追加帧；编码线程已取走帧不受影响。
+	m_bRecording = false;
 }
 
 void Insulator_Zero_Value_Detection_Robot::InitUI()
@@ -252,6 +254,7 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pBticket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Ticket_Click);
 	connect(ui.pBSetting, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click);
 	connect(ui.pBreport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Report_Click);
+	
 	connect(ui.pushButton_4, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Record_Click);
 	connect(ui.pBNewTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click);
 	connect(ui.pBNewReport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewReport_Click);
@@ -734,6 +737,16 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 
 			if (!frame.empty())
 			{
+				// 录像：录制期间仅将帧缓存到内存，不直接写文件；
+				// 停止后由UI线程弹框选路径，再将缓存帧统一转成视频。
+				if (m_bRecording)
+				{
+					std::lock_guard<std::mutex> g(m_mutexRecordBuf);
+					// clone避免grab复用缓冲区导致缓存帧被后续帧覆盖/错乱；
+					// MJPG按帧压缩，内存占用有限，单帧仅几十字节级别开销可忽略。
+					m_vecRecordFrames.push_back(frame.clone());
+				}
+
 				//cv::imshow("RTSP Low Delay", frame);
 				// 将frame 转成QImage，通过信号安全地传递到UI线程
 				QImage qImg = Mat2QImage(frame);
@@ -768,7 +781,11 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 			break;
 		}
 	}
-	// 清理资源
+	// 清理资源（退出时仍在录像则丢弃缓存帧，避免占内存）
+	{
+		std::lock_guard<std::mutex> g(m_mutexRecordBuf);
+		m_vecRecordFrames.clear();
+	}
 	cap.release();
 }
 
@@ -913,8 +930,93 @@ void Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click()
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
-void Insulator_Zero_Value_Detection_Robot::On_Record_Click()
+void Insulator_Zero_Value_Detection_Robot::On_Record_Click(bool bState)
 {
+	// 当开始录屏时，将cv::Mat 保存成视频，待录屏结束时保存视频文件；
+	// UI线程只置标志并准备路径，实际写帧由取流线程（NewCameraConnect）完成
+	if (bState)
+	{
+		if (!m_pConfig->m_memCCameraConfig.m_bNewCamera)
+		{
+			// 旧摄像头为SDK直显窗口句柄，取不到cv::Mat帧，无法录像
+			QMessageBox::warning(this, "提示", "当前摄像头模式不支持录像");
+			ui.pushButton_4->setChecked(false);
+			return;
+		}
+
+		std::lock_guard<std::mutex> g(m_mutexRecordBuf);
+		// clone避免grab复用缓冲区导致缓存帧被后续帧覆盖/错乱；
+		// MJPG按帧压缩，内存占用有限，单帧仅几十字节级别开销可忽略。
+		m_vecRecordFrames.clear();
+
+		m_bRecording = true;
+		ui.pushButton_4->setText(QStringLiteral("停止录像"));
+	}
+	else
+	{
+		// 停止录像：先清零标志，取流线程不再追加帧，再取走全部缓存帧。
+		m_bRecording = false;
+		ui.pushButton_4->setText(QStringLiteral("录像"));
+
+		std::vector<cv::Mat> vecFrames;
+		{
+			std::lock_guard<std::mutex> g(m_mutexRecordBuf);
+			vecFrames.swap(m_vecRecordFrames);
+		}
+		if (vecFrames.empty())
+		{
+			QMessageBox::warning(this, "提示", "录像失败：未捕获到任何画面");
+			return;
+		}
+
+		// 按录制时长与帧数反推帧率（限到1~60），比固定帧率更贴近真实播放速度。
+		double fps = m_timeRecordStart.isValid()
+			? vecFrames.size() * 1000.0 / qMax<qint64>(1, m_timeRecordStart.msecsTo(QDateTime::currentDateTime()))
+			: 25.0;
+		fps = qBound(1.0, fps, 60.0);
+
+		// 弹保存对话框选择路径；取消则丢弃缓存帧不保存。
+		QString strDefaultName = QString("录像_%1.avi")
+			.arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+		QString strPath = QFileDialog::getSaveFileName(this, "保存录像", strDefaultName, "AVI 视频 (*.avi)");
+		if (strPath.isEmpty())
+		{
+			return;
+		}
+
+		// 后台线程将缓存帧编码成视频，避免长时间编码阻塞UI；
+		// 帧已取走，与取流线程无共享数据，仅通过invokeMethod回UI线程提示结果。
+		double dFps = fps;
+		std::thread tdEncode([this, strPath, dFps, vecFrames = std::move(vecFrames)]() mutable {
+			bool bOk = false;
+			cv::VideoWriter writer;
+			writer.open(strPath.toStdString(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
+				dFps, vecFrames.front().size());
+			if (writer.isOpened())
+			{
+				for (const auto& f : vecFrames)
+				{
+					writer.write(f);
+				}
+				writer.release();
+				bOk = true;
+			}
+			// 回UI线程提示保存结果（用户取消已在弹框后提前处理）。
+			QMetaObject::invokeMethod(this, [this, strPath, bOk]() {
+				if (bOk)
+				{
+					QMessageBox::information(this, "提示", QString("录像已保存到：\n%1").arg(strPath));
+				}
+				else
+				{
+					if (m_pDeviceLog)
+						m_pDeviceLog->Write("录像失败：创建视频文件失败 " + strPath.toStdString());
+					QMessageBox::warning(this, "提示", "录像保存失败：无法创建视频文件");
+				}
+				}, Qt::QueuedConnection);
+			});
+		tdEncode.detach();
+	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Report_Click()

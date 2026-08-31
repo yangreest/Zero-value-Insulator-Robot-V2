@@ -1,6 +1,7 @@
 #pragma once
-#include <atomic>
 #include <mutex>
+#include <atomic>
+#include <QDateTime>
 #include <QtWidgets/QMainWindow>
 #include "ui_Insulator_Zero_Value_Detection_Robot.h"
 #include "Config/ConfigManager.h"
@@ -195,21 +196,16 @@ private:
 
 	bool continueStreaming;
 
-	// 录像状态：仅流线程写，UI线程只读；点击录像按钮时置位/清除，由流线程检测并启停写文件，
-	// 避免跨线程操作 cv::VideoWriter
-	std::atomic<bool> m_bRecordRequest{ false };
-
-	// 录像文件实际是否已打开（仅流线程读写，按钮复位后据此反馈保存结果）
-	bool m_bRecording = false;
-
-	// 录像帧率，取流分辨率确定后初始化；写入慢于流帧率时丢帧不卡流，最终视频为近似帧率回放（仅流线程读写）
-	double m_dRecordFps = 25.0;
-
-	// 录像分辨率（仅流线程读写）
-	int m_nRecordWidth = 0;
-	int m_nRecordHeight = 0;
-
 	QLabel* overlayLabel;
+
+	// 录像状态标志（UI线程写，取流线程读）
+	std::atomic<bool> m_bRecording{ false };
+	// 录像帧缓存：录制期间取流线程逐帧追加，停止后统一转成视频文件；
+	// 写帧用clone避免grab复用缓冲区，互斥锁保护跨线程读写。
+	std::mutex m_mutexRecordBuf;
+	std::vector<cv::Mat> m_vecRecordFrames;
+	// 录像开始时间，停止时结合帧数反推帧率（仅UI线程读写）
+	QDateTime m_timeRecordStart;
 
 	NewReportDialog* newReportDialog;
 	NewTicketDialog* newTicketDialog;
