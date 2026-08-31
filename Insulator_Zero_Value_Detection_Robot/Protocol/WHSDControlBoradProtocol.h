@@ -190,6 +190,8 @@ public:
 	/// <returns></returns>
 	static std::vector<uint8_t> DeviceRun(uint8_t target, uint8_t enable, uint8_t runMode, uint8_t speed);
 
+	static std::vector<uint8_t> DeviceRun(uint8_t target, uint8_t enable, uint8_t runMode,uint8_t runAngel, uint16_t speed);
+
 	static std::vector<uint8_t> DeviceStop(uint8_t target);
 
 	static std::vector<uint8_t> DeviceStopAll();

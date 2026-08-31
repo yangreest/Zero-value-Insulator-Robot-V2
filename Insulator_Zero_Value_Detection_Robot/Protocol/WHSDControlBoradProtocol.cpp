@@ -434,6 +434,14 @@ std::vector<uint8_t> CWHSDControlBoardProtocol::DeviceRun(uint8_t target, uint8_
 	return GetCmdData(0x05, { target, enable, runMode, speed });
 }
 
+std::vector<uint8_t> CWHSDControlBoardProtocol::DeviceRun(uint8_t target, uint8_t enable, uint8_t runMode, uint8_t runAngel, uint16_t speed)
+{
+	// speed 转大端 
+	uint8_t speed_H = (speed >> 8) & 0xFF; // speed 转大端 
+	uint8_t speed_L = (speed >> 0) & 0xFF; // speed 转大端 
+	return GetCmdData(0x05, { target, enable, runMode,runAngel, speed_H, speed_L });
+}
+
 std::vector<uint8_t> CWHSDControlBoardProtocol::DeviceStop(uint8_t target)
 {
 	return GetCmdData(0x05, { target, 0x03, 0, 0 });

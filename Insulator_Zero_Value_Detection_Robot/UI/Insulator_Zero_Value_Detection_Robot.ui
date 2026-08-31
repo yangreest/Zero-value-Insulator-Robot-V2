@@ -1485,6 +1485,9 @@ QPushButton:pressed
                      <iconset resource="Insulator_Zero_Value_Detection_Robot.qrc">
                       <normaloff>:/ICON/Icon/录像.svg</normaloff>:/ICON/Icon/录像.svg</iconset>
                     </property>
+                    <property name="checkable">
+                     <bool>true</bool>
+                    </property>
                    </widget>
                   </item>
                   <item>
@@ -1632,7 +1635,7 @@ QTabBar::tab:disabled {
 }</string>
                </property>
                <property name="currentIndex">
-                <number>1</number>
+                <number>0</number>
                </property>
                <widget class="QWidget" name="tabWidget_2Page1">
                 <attribute name="title">
@@ -4460,6 +4463,12 @@ QTabBar::tab:disabled {
                  </property>
                  <item>
                   <widget class="QWidget" name="widget" native="true">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
                    <property name="styleSheet">
                     <string notr="true">background-color: rgb(50, 109, 66);</string>
                    </property>
@@ -5537,7 +5546,7 @@ QPushButton:pressed
                     <widget class="QComboBox" name="comboBox_3">
                      <item>
                       <property name="text">
-                       <string>高速</string>
+                       <string>低速</string>
                       </property>
                      </item>
                      <item>
@@ -5547,7 +5556,7 @@ QPushButton:pressed
                      </item>
                      <item>
                       <property name="text">
-                       <string>低速</string>
+                       <string>高速</string>
                       </property>
                      </item>
                     </widget>
@@ -6195,7 +6204,7 @@ border :none;
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup"/>
   <buttongroup name="buttonGroup_2"/>
+  <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>

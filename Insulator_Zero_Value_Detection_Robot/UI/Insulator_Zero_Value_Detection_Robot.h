@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <mutex>
 #include <QtWidgets/QMainWindow>
 #include "ui_Insulator_Zero_Value_Detection_Robot.h"
@@ -34,14 +35,17 @@ private slots:
 	void On_timer_timeout();
 	void On_timerInput_timeout();
 	void On_TurnOnAll_Click(bool bState);
-	void On_TurnOffAll_Click();
+	// 截图按钮
+	void On_Screenshot_Click();
 	void On_Close_Click();
 	void On_Inspection_Click();
 	void On_Ticket_Click();
 	void On_pBSetting_Click();
 	void On_Report_Click();
 	void On_ZeroTest_Click();
-	void On_Setting_Click();
+	// 录屏按钮
+	void On_Record_Click(bool bState);
+	//void On_Setting_Click();
 	void captureCurrentWindow(bool bInside = true);
 	void On_SetFileName_Click();
 	void On_NewTicket_Click();
@@ -51,6 +55,17 @@ private slots:
 	void On_LoadTicket_Click();
 	void On_Test_Click();
 	void On_Retest_Click();
+
+
+	// 保存电机速度
+	void On_SaveMotorSpeed_Click();
+	// 保存机器人IP
+	void On_SaveRobotIp_Click();
+	// 保存摄像头IP
+	void On_SaveCameraIp_Click();
+	// 保存探针角度
+	void On_SaveProbeAngle_Click();
+	// 保存绝缘阈值
 	void On_SaveInsuThreshold_Click();
 
 	// 工单查询重置
@@ -179,6 +194,20 @@ private:
 	QString	m_strFileName;
 
 	bool continueStreaming;
+
+	// 录像状态：仅流线程写，UI线程只读；点击录像按钮时置位/清除，由流线程检测并启停写文件，
+	// 避免跨线程操作 cv::VideoWriter
+	std::atomic<bool> m_bRecordRequest{ false };
+
+	// 录像文件实际是否已打开（仅流线程读写，按钮复位后据此反馈保存结果）
+	bool m_bRecording = false;
+
+	// 录像帧率，取流分辨率确定后初始化；写入慢于流帧率时丢帧不卡流，最终视频为近似帧率回放（仅流线程读写）
+	double m_dRecordFps = 25.0;
+
+	// 录像分辨率（仅流线程读写）
+	int m_nRecordWidth = 0;
+	int m_nRecordHeight = 0;
 
 	QLabel* overlayLabel;
 

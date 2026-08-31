@@ -13,6 +13,7 @@
 #include <QLineSeries>
 #include <QSplitter>
 #include <QTableView>
+#include <QTimer>
 #include <QValueAxis>
 
 #include <cmath>
@@ -129,8 +130,10 @@ void ModelDataWidget::applyTableWidth()
 void ModelDataWidget::resizeEvent(QResizeEvent *event)
 {
     ContentWidget::resizeEvent(event);
-    // 窗口尺寸变化时保持表格按表头宽度显示，剩余空间归曲线图（拖动splitter不受影响）
-    applyTableWidth();
+    // 延迟到事件循环执行，避免在父级splitter拖拽过程中调用setSizes引起布局冲突
+    QTimer::singleShot(0, this, [this]() {
+        applyTableWidth();
+    });
 }
 
 void ModelDataWidget::appendValue(const QString &header, double value)
