@@ -17,6 +17,9 @@
 #include <QDir>
 #include <random>
 
+static const QString strRTSP_URL = "rtsp://admin:123456@192.168.1.123/stream0";
+static const QString strRTSP_URL_2 = "rtsp://admin:123456@192.168.1.123/stream1";
+
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
 	: QMainWindow(parent), overlayLabel(nullptr)
 {
