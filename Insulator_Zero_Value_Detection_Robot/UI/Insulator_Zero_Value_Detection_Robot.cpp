@@ -39,6 +39,8 @@ Insulator_Zero_Value_Detection_Robot::~Insulator_Zero_Value_Detection_Robot()
 
 void Insulator_Zero_Value_Detection_Robot::InitUI()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("InitUI：界面初始化开始");
 	showMaximized();
 	// 隐藏标题栏
 	setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
@@ -166,6 +168,7 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 	m_wSensorResult = 0;
 	m_pDeviceLog = new CWriteLog(WHSD_Tools::GetAbsolutePath("Log\\DeviceLog.txt"), 10000, 250);
 	m_pDeviceLog->BeginWork();
+	m_pDeviceLog->Write("InitParam：参数初始化开始，设备日志已启动");
 	m_pConfig = new CConfigManager();
 	m_pConfig->Read(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	m_pXInputHelper = new CXInputHelper(0);
@@ -237,6 +240,8 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 
 void Insulator_Zero_Value_Detection_Robot::BindAction()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("BindAction：绑定定时器与按钮信号槽");
 	m_pTimer = new QTimer(this);
 	m_pTimer->setInterval(100);
 	connect(m_pTimer, &QTimer::timeout, this, &Insulator_Zero_Value_Detection_Robot::On_timer_timeout);
@@ -534,6 +539,8 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 void Insulator_Zero_Value_Detection_Robot::ComDeviceConnectionChanged(const bool connected, int guid, int index)
 {
 	m_bControlBroadConnected = connected;
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write(std::string("控制板连接状态变化：") + (connected ? "已连接" : "断开"));
 }
 
 //void Insulator_Zero_Value_Detection_Robot::RefreshControllerState(const ControllerState* p)
@@ -572,6 +579,9 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue(CSensorData* p)
 void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 {
 	float value = p[0];
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("收到测量结果：%.3f MΩ", value);
 
 	// 测量流程：记录本次结果所属步骤，切到UI线程推进后续流程（回调在协议线程）
 	int nMeasureStep = m_nMeasureStep;
@@ -643,6 +653,8 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 
 void Insulator_Zero_Value_Detection_Robot::CameraConnect()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("CameraConnect：开始连接摄像头");
 	int initStatus = 0;
 	bool needBreak = false;
 	while (true)
@@ -674,6 +686,8 @@ void Insulator_Zero_Value_Detection_Robot::CameraConnect()
 			if (m_pC2->Connect(m_strRightIp, 0, "", ""))
 			{
 				initStatus = 3;
+				if (m_pDeviceLog)
+					m_pDeviceLog->Write("CameraConnect：左右摄像头连接成功");
 			}
 			break;
 		}
@@ -710,6 +724,8 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 	{
 		rtsp_url = strRTSP_URL.toStdString();
 	}
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("NewCameraConnect：开始连接RTSP摄像头 " + rtsp_url);
 
 	cv::VideoCapture cap;
 
@@ -722,6 +738,8 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 	if (!isOpen)
 	{
 		qDebug() << "Failed to open RTSP stream: " << rtsp_url;
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("NewCameraConnect：打开RTSP流失败 " + rtsp_url);
 		return; // 不应该返回-1，因为这不是main函数
 	}
 
@@ -772,12 +790,16 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 			else
 			{
 				qDebug() << "Frame is empty";
+				if (m_pDeviceLog)
+					m_pDeviceLog->Write("NewCameraConnect：取流帧为空，停止取流");
 				break;
 			}
 		}
 		else
 		{
 			qDebug() << "Failed to grab frame";
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("NewCameraConnect：抓取帧失败，停止取流");
 			break;
 		}
 	}
@@ -859,6 +881,8 @@ void Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat(const CDevic
 
 void Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click(bool bState)
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write(bState ? "一键开机" : "一键关机");
 	if (!bState)
 	{
 		auto cmds = CWHSDControlBoardProtocol::TurnOffAll();
@@ -874,6 +898,8 @@ void Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click(bool bState)
 void Insulator_Zero_Value_Detection_Robot::On_Screenshot_Click()
 {
 	//截图
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("手动截图");
 	// 获取当前窗口的句柄（Windows）/ID（Linux）
 	WId windowId = ui.label_9->winId();
 
@@ -897,34 +923,48 @@ void Insulator_Zero_Value_Detection_Robot::On_Screenshot_Click()
 			if (m_pDeviceLog)
 				m_pDeviceLog->Write("测量截图失败：保存图片失败");
 		}
+		else if (m_pDeviceLog)
+		{
+			m_pDeviceLog->Write("截图保存成功：" + fileName.toStdString());
+		}
 	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Close_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("关闭软件");
 	this->close();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Inspection_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("切换到检测界面");
 	ui.stackedWidget_3->setCurrentIndex(0);
 	if (overlayLabel) overlayLabel->show();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_Ticket_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("切换到工单界面");
 	ui.stackedWidget_3->setCurrentIndex(1);
 	if (overlayLabel) overlayLabel->hide();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_pBSetting_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("切换到设置界面");
 	ui.stackedWidget_3->setCurrentIndex(3);
 	if (overlayLabel) overlayLabel->hide();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ZeroTest_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("发送零值检测指令");
 	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 
 	m_pComDevice->Write(cmds.data(), cmds.size());
@@ -939,6 +979,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Record_Click(bool bState)
 		if (!m_pConfig->m_memCCameraConfig.m_bNewCamera)
 		{
 			// 旧摄像头为SDK直显窗口句柄，取不到cv::Mat帧，无法录像
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("录像失败：当前摄像头模式不支持录像");
 			QMessageBox::warning(this, "提示", "当前摄像头模式不支持录像");
 			ui.pushButton_4->setChecked(false);
 			return;
@@ -950,6 +992,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Record_Click(bool bState)
 		m_vecRecordFrames.clear();
 
 		m_bRecording = true;
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("开始录像");
 		ui.pushButton_4->setText(QStringLiteral("停止录像"));
 	}
 	else
@@ -963,6 +1007,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Record_Click(bool bState)
 			std::lock_guard<std::mutex> g(m_mutexRecordBuf);
 			vecFrames.swap(m_vecRecordFrames);
 		}
+		if (m_pDeviceLog)
+			m_pDeviceLog->WriteFormat("停止录像，共捕获 %d 帧", (int)vecFrames.size());
 		if (vecFrames.empty())
 		{
 			QMessageBox::warning(this, "提示", "录像失败：未捕获到任何画面");
@@ -1005,6 +1051,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Record_Click(bool bState)
 			QMetaObject::invokeMethod(this, [this, strPath, bOk]() {
 				if (bOk)
 				{
+					if (m_pDeviceLog)
+						m_pDeviceLog->Write("录像保存成功：" + strPath.toStdString());
 					QMessageBox::information(this, "提示", QString("录像已保存到：\n%1").arg(strPath));
 				}
 				else
@@ -1021,6 +1069,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Record_Click(bool bState)
 
 void Insulator_Zero_Value_Detection_Robot::On_Report_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("切换到报告界面");
 	ui.stackedWidget_3->setCurrentIndex(2);
 	if (overlayLabel) overlayLabel->hide();
 }
@@ -1052,6 +1102,10 @@ void Insulator_Zero_Value_Detection_Robot::captureCurrentWindow(bool bInside)
 		if (m_pDeviceLog)
 			m_pDeviceLog->Write(("测量截图保存失败：" + filePath.toStdString()));
 	}
+	else if (m_pDeviceLog)
+	{
+		m_pDeviceLog->Write("测量截图保存成功：" + filePath.toStdString());
+	}
 }
 
 QString Insulator_Zero_Value_Detection_Robot::GetMeasureImageFileName(bool bInside)
@@ -1082,6 +1136,8 @@ void Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click()
 	QString filePath = QFileDialog::getExistingDirectory(this, "选择文件夹");
 	if (!filePath.isEmpty()) {
 		m_strFileName = filePath;
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("设置截图保存目录：" + filePath.toStdString());
 		return;
 	}
 	QMessageBox::information(this, "提示", "文件保存失败");
@@ -1089,11 +1145,15 @@ void Insulator_Zero_Value_Detection_Robot::On_SetFileName_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("打开新建工单对话框");
 	newTicketDialog->show();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_NewReport_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("新建报告，工单ID：" + m_CurrentTicketConfig.m_strTicketId);
 	//获取当前工单的ID
 	std::string strTicketId = m_CurrentTicketConfig.m_strTicketId;
 	if (m_CurrentTicketConfig.m_bGenerateReport)
@@ -1126,6 +1186,8 @@ void Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click()
 	// 删除tableWidget_2选中的行
 	int row = ui.tableWidget_2->currentRow();
 	if (row >= 0) {
+		if (m_pDeviceLog)
+			m_pDeviceLog->WriteFormat("删除工单：第 %d 行", row + 1);
 		ui.tableWidget_2->removeRow(row);
 	}
 }
@@ -1137,6 +1199,8 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeTicket_Click()
 		return;
 	}
 
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("修改工单：第 %d 行", row + 1);
 	CNewTicketConfig m_memNewTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
 	newTicketDialog->SetTicket(m_memNewTicketConfig);
 	newTicketDialog->show();
@@ -1147,6 +1211,9 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 	int row = ui.tableWidget_2->currentRow();
 	if (row < 0)return;
 	m_CurrentTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("加载工单：" + m_CurrentTicketConfig.m_strLineName + "_" + m_CurrentTicketConfig.m_strPoleNumber + " ID：" + m_CurrentTicketConfig.m_strTicketId);
 
 	ui.labelTicketLineName->setText(QString::fromStdString(m_CurrentTicketConfig.m_strLineName));
 	ui.labelPoleNumber->setText(QString::fromStdString(m_CurrentTicketConfig.m_strPoleNumber));
@@ -1212,6 +1279,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 	}
 
 	// 第一步：探针指向内测，按钮禁用并弹出不可关闭的等待窗，等待4s到位后执行第一次测量
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("开始测量：侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString());
 	SetMeasureUiEnabled(false);
 	ShowMeasureWaitDialog(QStringLiteral("探针指向内测，等待到位..."));
 
@@ -1225,6 +1294,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 		m_pComDevice->Write(cmds.data(), cmds.size());
 		m_nMeasureStep = 1;
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("测量流程：发送第一次测量指令（内测）");
 		});
 }
 
@@ -1233,6 +1304,8 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 	if (nStep == 1)
 	{
 		// 第一次（内测）结果已收到：探针打到外侧，等待4s到位后执行第二次测量
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("测量流程：内测结果已收到，探针切换到外侧");
 		UpdateMeasureWaitDialog(QStringLiteral("探针切换到外侧，等待到位..."));
 		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 			m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
@@ -1244,11 +1317,15 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 			auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			m_nMeasureStep = 2;
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("测量流程：发送第二次测量指令（外侧）");
 			});
 	}
 	else if (nStep == 2)
 	{
 		// 第二次（外侧）结果已收到：探针复原，关闭等待窗并恢复按钮，测量结束
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("测量流程：外侧结果已收到，探针复原，本次测量结束");
 		UpdateMeasureWaitDialog(QStringLiteral("探针复原中..."));
 		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 			m_pConfig->m_memControlBoardConfig.m_cDownAngle);
@@ -1343,6 +1420,8 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 		{
 		case Qt::Key_Q:	// 探针向内（内测）
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：探针向内（内测）");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed + 1) * 25);
 			m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1351,6 +1430,8 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 		}
 		case Qt::Key_E:	// 探针向外（外侧）
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：探针向外（外侧）");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed + 1) * 25);
 			m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1359,6 +1440,8 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 		}
 		case Qt::Key_R:	// 探针复原
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：探针复原");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed + 1) * 25);
 			m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1368,6 +1451,8 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 		case Qt::Key_A:
 		case Qt::Key_Left:	// 行走向左
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：行走向左");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02,
 				m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 			m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1377,6 +1462,8 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 		case Qt::Key_D:
 		case Qt::Key_Right:	// 行走向右
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：行走向右");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01,
 				m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 			m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1385,12 +1472,16 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 		}
 		case Qt::Key_S:	// 停止行走
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：停止行走");
 			On_stop_Click();
 			ui.label_29->setText("");
 			return;
 		}
 		case Qt::Key_Space:	// 开始测量（流程内部已防重复触发）
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：开始测量");
 			On_Test_Click();
 			return;
 		}
@@ -1415,6 +1506,8 @@ void Insulator_Zero_Value_Detection_Robot::keyReleaseEvent(QKeyEvent* event)
 		case Qt::Key_Left:
 		case Qt::Key_Right:
 		{
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("键盘控制：松开行走键，停止行走");
 			auto cmds = CWHSDControlBoardProtocol::DeviceStop(0x01);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("");
@@ -1437,6 +1530,9 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 	QVector<float>& vecData = m_mapTicketMearData[strSide][strDira];
 	if (vecData.isEmpty())return;
 
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("重测：删除最近一个测量值，侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString());
+
 	// 被删除的是第size个测量值：双联时奇数次为内侧、偶数次为外侧，据此定位列
 	QString strHeader = strDira;
 	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
@@ -1455,6 +1551,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 void Insulator_Zero_Value_Detection_Robot::On_SaveMotorSpeed_Click()
 {
 	m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed = ui.comboBox_3->currentIndex();	// 控制电机速度
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("保存电机速度：%d", (int)m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("参数已保存"));
 }
@@ -1462,6 +1560,8 @@ void Insulator_Zero_Value_Detection_Robot::On_SaveMotorSpeed_Click()
 void Insulator_Zero_Value_Detection_Robot::On_SaveRobotIp_Click()
 {
 	m_pConfig->m_memControlBoardConfig.m_strIp = ui.lineEdit_9->text().toStdString();		// 设备IP
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("保存机器人IP：" + m_pConfig->m_memControlBoardConfig.m_strIp);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("参数已保存"));
 }
@@ -1471,6 +1571,8 @@ void Insulator_Zero_Value_Detection_Robot::On_SaveCameraIp_Click()
 	// 记录修改前的摄像头IP，用于判断是否需要重启
 	std::string oldLeftIp = m_pConfig->m_memCCameraConfig.m_strLeftIp;
 	m_pConfig->m_memCCameraConfig.m_strLeftIp = ui.lineEdit_10->text().toStdString();		// 左摄像头IP
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("保存摄像头IP：" + m_pConfig->m_memCCameraConfig.m_strLeftIp);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	// 摄像头IP修改后需要重启软件才能生效
 	if (m_pConfig->m_memCCameraConfig.m_strLeftIp != oldLeftIp)
@@ -1487,6 +1589,11 @@ void Insulator_Zero_Value_Detection_Robot::On_SaveProbeAngle_Click()
 	m_pConfig->m_memControlBoardConfig.m_cUpAngle = ui.lineEdit_7->text().toInt();			// 探针向内的角度
 	m_pConfig->m_memControlBoardConfig.m_cDownAngle = ui.lineEdit_14->text().toInt();		// 探针复原的角度
 	m_pConfig->m_memControlBoardConfig.m_cUpAngle2 = ui.lineEdit_13->text().toInt();		// 探针向外的角度
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("保存探针角度：向内=%d 复原=%d 向外=%d",
+			(int)m_pConfig->m_memControlBoardConfig.m_cUpAngle,
+			(int)m_pConfig->m_memControlBoardConfig.m_cDownAngle,
+			(int)m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("参数已保存"));
 }
@@ -1494,24 +1601,32 @@ void Insulator_Zero_Value_Detection_Robot::On_SaveProbeAngle_Click()
 void Insulator_Zero_Value_Detection_Robot::On_SaveInsuThreshold_Click()
 {
 	m_pConfig->m_memControlBoardConfig.m_wInsuThreshold = ui.lineEdit_15->text().toInt();	// 绝缘阈值
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("保存绝缘阈值：%d", (int)m_pConfig->m_memControlBoardConfig.m_wInsuThreshold);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("参数已保存"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_forword_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：行走向右（前进）");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x01, 0x00);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_backward_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：行走向左（后退）");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x01, 0b11, 0x02, 0x00);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_neddle1_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：探针向内（内测）");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 		m_pConfig->m_memControlBoardConfig.m_cUpAngle);
 	m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1519,6 +1634,8 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle1_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_neddle2_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：探针向外（外侧）");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 		m_pConfig->m_memControlBoardConfig.m_cUpAngle2);
 	m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1526,6 +1643,8 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle2_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_neddle3_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：探针复原");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
 		m_pConfig->m_memControlBoardConfig.m_cDownAngle);
 	m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1533,12 +1652,16 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle3_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_stop_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：停止");
 	auto cmds = CWHSDControlBoardProtocol::DeviceStop(0x01);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_mear_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作：单次测量");
 	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 
 	m_pComDevice->Write(cmds.data(), cmds.size());
@@ -1548,6 +1671,8 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 {
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("切换相别/侧别：侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString());
 	QVector<float> vecData = m_mapTicketMearData[strSide][strDira];
 	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 
@@ -1604,6 +1729,8 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 
 void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfig strTicket)
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("更新工单：" + strTicket.m_strTicketId + " " + strTicket.m_strLineName + "_" + strTicket.m_strPoleNumber);
 	// 更新tableWidget_2选中行的数据
 	int currentRow = ui.tableWidget_2->currentRow();
 
@@ -1624,6 +1751,8 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal(CNewTicketConfi
 
 void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig strReport)
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("新增报告：" + strReport.m_strReportId);
 	//strReport.m_strReportId = GenerateUniqueReportId();
 	int rowCount = ui.tableWidget_3->rowCount();
 	ui.tableWidget_3->insertRow(rowCount);
@@ -1673,15 +1802,21 @@ void Insulator_Zero_Value_Detection_Robot::On_NewReportSignal(CNewReportConfig s
 			}
 		}
 		csvFile.close();
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("测量数据CSV保存成功：" + strCsvPath);
 	}
 	else
 	{
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("测量数据CSV保存失败：" + strCsvPath);
 		QMessageBox::warning(this, "错误", QString("测量数据CSV保存失败：\n%1").arg(strCsvPath));
 	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal(CNewReportConfig strReport)
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("更新报告：" + strReport.m_strReportId);
 	int rowCount = ui.tableWidget_3->currentRow();
 	ui.tableWidget_3->setItem(rowCount, 0, new QTableWidgetItem(QString::number(rowCount + 1)));
 	ui.tableWidget_3->item(rowCount, 0)->setData(Qt::UserRole, QVariant::fromValue(strReport));
@@ -1707,6 +1842,8 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal(CNewReportConfi
 void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig config)
 {
 	config.m_strTicketId = GenerateUniqueTicketId();  // 设置唯一 ID
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("新增工单：" + config.m_strTicketId + " " + config.m_strLineName + "_" + config.m_strPoleNumber);
 	// 在tableWidget_2中新增一行
 	int rowCount = ui.tableWidget_2->rowCount();
 	ui.tableWidget_2->insertRow(rowCount);
@@ -1740,9 +1877,13 @@ void Insulator_Zero_Value_Detection_Robot::savePixmap(const QPixmap& pixmap)
 		// 保存图片
 		bool success = pixmap.save(filePath);
 		if (success) {
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("截图保存成功：" + filePath.toStdString());
 			QMessageBox::information(this, "成功", QString("截图已保存到：\n%1").arg(filePath));
 		}
 		else {
+			if (m_pDeviceLog)
+				m_pDeviceLog->Write("截图保存失败：" + filePath.toStdString());
 			QMessageBox::warning(this, "错误", "截图保存失败");
 		}
 	}
@@ -1837,6 +1978,8 @@ void Insulator_Zero_Value_Detection_Robot::FilterReportTable()
 
 void Insulator_Zero_Value_Detection_Robot::On_ResetTicket_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("重置工单查询条件");
 	// 清空查询条件并恢复全部显示（textChanged会自动触发过滤）
 	ui.lineEdit->clear();
 	ui.lineEdit_2->clear();
@@ -1846,6 +1989,8 @@ void Insulator_Zero_Value_Detection_Robot::On_ResetTicket_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_ResetReport_Click()
 {
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("重置报告查询条件");
 	// 清空查询条件并恢复全部显示（textChanged会自动触发过滤）
 	ui.lineEdit_4->clear();
 	ui.lineEdit_5->clear();
