@@ -672,7 +672,7 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 			QString strName = QString("labelInside%1").arg(vecData.size() / 2 + 1);
 			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 			if (!label)return;
-			if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold > value)
+			if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold < value)
 			{
 				label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #10b981;\n}");
 			}
@@ -688,7 +688,7 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 			QString strName = QString("labelOutside%1").arg(vecData.size() / 2);
 			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 			if (!label)return;
-			if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold > value)
+			if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold < value)
 			{
 				label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #10b981;\n}");
 			}
@@ -704,7 +704,7 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 		QString strName = QString("labelInside%1").arg(vecData.size());
 		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 		if (!label)return;
-		if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold > value)
+		if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold < value)
 		{
 			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #10b981;\n}");
 		}
@@ -1907,7 +1907,7 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 			{
 				// TODO:根据数据设置颜色
 				float valueInside = vecData[2 * i - 2].toDouble();
-				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold > valueInside)
+				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold < valueInside)
 				{
 					label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #10b981;\n}");
 				}
@@ -1922,7 +1922,7 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 			if (label)
 			{
 				float valueOutside = vecData[2 * i - 1].toDouble();
-				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold > valueOutside)
+				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold < valueOutside)
 				{
 					label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #10b981;\n}");
 				}
@@ -1942,7 +1942,7 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 			if (label)
 			{
 				float valueInside = vecData[i - 1].toDouble();
-				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold > valueInside)
+				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold < valueInside)
 				{
 					label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #10b981;\n}");
 				}
