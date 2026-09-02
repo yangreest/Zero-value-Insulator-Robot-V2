@@ -4,6 +4,7 @@
 #include <qmetatype.h>
 #include <QMap>
 #include <QString>
+#include <QJsonObject>
 
 
 class CControlBoardConfig
@@ -17,9 +18,9 @@ public:
 	uint8_t m_cUpAngle; // 探针1的位置
 	uint8_t m_cDownAngle; // 探针待机的位置
 	uint8_t m_cUpAngle2;//探针2的位置
-	uint8_t m_cWalkMotorSpeed; 
-	// 绝缘的阈值
-    uint16_t m_wInsuThreshold;
+	uint8_t m_cWalkMotorSpeed; // 行走电机的速度
+	uint8_t m_cServoSpeed;// 舵机速度
+    uint16_t m_wInsuThreshold;// 绝缘的阈值
 };
 
 class CCameraConfig
@@ -46,8 +47,6 @@ public:
 	std::string m_strDetectionPerson;
 	// 作业地点
 	std::string m_strWorkPlace;
-
-	QMap<QString, QMap<QString, QVector<float>>> m_mapTicketMearData;
 };
 
 class CNewTicketConfig
@@ -178,6 +177,9 @@ public:
 	std::string m_strRemark;
 	// 是否生成过报告
 	bool m_bGenerateReport =false;
+
+	// 测量数据（JSON格式）:第一层key为侧别,第二层key为相别/方向,值为该相测量值数组(QJsonArray)
+	QJsonObject m_mapTicketMearData;
 };
 
 class CConfigManager
@@ -187,8 +189,8 @@ public:
 	CCameraConfig m_memCCameraConfig;
 	std::vector<CNewTicketConfig> m_vecNewTicketConfig;
 	std::vector<CNewReportConfig> m_vecNewReportConfig;
-	void Read(const std::string& filePath);
-	void Write(const std::string& filePath);
+	bool Read(const std::string& filePath);
+	bool Write(const std::string& filePath);
 };
 
 // 关键：注册元类型，让QVariant识别这个类

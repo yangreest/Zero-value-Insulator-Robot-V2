@@ -2,6 +2,7 @@
 #include <mutex>
 #include <atomic>
 #include <QDateTime>
+#include <QJsonObject>
 #include <QtWidgets/QMainWindow>
 #include "ui_Insulator_Zero_Value_Detection_Robot.h"
 #include "Config/ConfigManager.h"
@@ -60,6 +61,8 @@ private slots:
 
 	// 保存电机速度
 	void On_SaveMotorSpeed_Click();
+	// 保存舵机的速度
+	void On_SaveServoSpeed_Click();
 	// 保存机器人IP
 	void On_SaveRobotIp_Click();
 	// 保存摄像头IP
@@ -124,7 +127,7 @@ private:
 	// 填充tableWidget_2指定行的工单数据（全部列）
 	void SetTicketRow(int row, const CNewTicketConfig& ticket);
 
-	// 测量流程（内测->第一次测量->外侧->第二次测量->复原）推进，nStep为结果对应的步骤（1=内测/2=外侧）
+	// 测量流程推进，nStep为结果对应的步骤（1=内测 2=外侧;单联时步骤1收到结果即结束,复测复用同一流程）
 	void OnMeasureResult(int nStep);
 
 	// 测量期间禁用/恢复相关按钮与下拉框（弹窗模态已挡界面，此处兼顾手柄等外部触发）
@@ -215,7 +218,8 @@ private:
 	// 电阻值表格/曲线控件（列随comboBox、行随片数）
 	ModelDataWidget* m_pModelDataWidget = nullptr;
 
-	QMap<QString, QMap<QString, QVector<float>>> m_mapTicketMearData;
+	// 测量数据（JSON格式）:第一层key为侧别,第二层key为相别/方向,值为该相测量值数组(QJsonArray)
+	QJsonObject m_mapTicketMearData;
 
 	CNewTicketConfig m_CurrentTicketConfig;
 

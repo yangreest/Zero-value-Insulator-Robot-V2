@@ -1,6 +1,7 @@
 #include "newticketdialog.h"
 #include <QFileDialog>
 #include <QDateTime>
+#include <QMessageBox>
 
 NewTicketDialog::NewTicketDialog(QWidget* parent)
 	:QWidget(parent), m_bIsNewTicket(true)
@@ -24,11 +25,26 @@ NewTicketDialog::~NewTicketDialog()
 
 void NewTicketDialog::on_buttonBox_accepted()
 {
+	// 校验名称不能为空
+	if (ui.lineEdit->text().trimmed().isEmpty())
+	{
+		QMessageBox::warning(this, "提示", "名称不能为空");
+		return;
+	}
+
+	// 校验数量要在1到60之间
+	int sliceNum = ui.lineEdit_3->text().toInt();
+	if (sliceNum < 1 || sliceNum > 60)
+	{
+		QMessageBox::warning(this, "提示", "数量要在1到60之间");
+		return;
+	}
+
 	CNewTicketConfig m_memNewTicketConfig = m_strTicket;
 	m_memNewTicketConfig.m_strLineName = ui.lineEdit->text().toStdString();
 	m_memNewTicketConfig.m_strPoleNumber = ui.lineEdit_2->text().toStdString();
 	m_memNewTicketConfig.m_eBunchType = (CNewTicketConfig::BunchType)ui.comboBox->currentIndex();
-	m_memNewTicketConfig.m_wInsulatorSliceNum = ui.lineEdit_3->text().toInt();
+	m_memNewTicketConfig.m_wInsulatorSliceNum = sliceNum;
 	m_memNewTicketConfig.m_eLoopType = (CNewTicketConfig::LoopType)ui.comboBox_2->currentIndex();
 	m_memNewTicketConfig.m_strDetectionUnit = ui.lineEdit_4->text().toStdString();
 	m_memNewTicketConfig.m_strRemark = ui.lineEdit_5->text().toStdString();

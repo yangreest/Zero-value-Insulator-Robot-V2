@@ -1,6 +1,9 @@
 #include "ConfigManager.h"
 #include "../Tools/tinyxml2.h"
 #include <Tools/BinData.h>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 
 CControlBoardConfig::CControlBoardConfig()
 {
@@ -10,19 +13,20 @@ CControlBoardConfig::CControlBoardConfig()
 	m_bFactoryMode = false;
 }
 
-void CConfigManager::Read(const std::string& filePath)
+bool CConfigManager::Read(const std::string& filePath)
 {
 	tinyxml2::XMLDocument doc;
 	tinyxml2::XMLError eResult = doc.LoadFile(filePath.c_str());
 	int nIntTemp = 0;
 	if (eResult != tinyxml2::XML_SUCCESS)
-		return;
+		return false;
 	auto config = doc.RootElement();
 	if (config == nullptr)
-		return;
+		return false;
 	{
 		auto deviceBoard = config->FirstChildElement("DeviceControlBoard");
-		if (deviceBoard != nullptr)
+		if (deviceBoard == nullptr)
+			return false;
 		{
 			auto ipElement = deviceBoard->FirstChildElement("Ip");
 			if (ipElement && ipElement->GetText())
@@ -60,6 +64,11 @@ void CConfigManager::Read(const std::string& filePath)
 			{
 				m_memControlBoardConfig.m_cWalkMotorSpeed = nIntTemp;
 			}
+            auto d8m = deviceBoard->FirstChildElement("ServoSpeed");
+            if (d8m != nullptr && d8m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+            {
+                m_memControlBoardConfig.m_cServoSpeed = nIntTemp;
+            }
             auto d6m = deviceBoard->FirstChildElement("InsuThreshold");
             if (d6m != nullptr && d6m->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
             {
@@ -74,7 +83,8 @@ void CConfigManager::Read(const std::string& filePath)
 	}
 	{
 		auto sb = config->FirstChildElement("Camera");
-		if (sb != nullptr)
+		if (sb == nullptr)
+			return false;
 		{
 			auto nLeft = sb->FirstChildElement("Left");
 			if (nLeft != nullptr)
@@ -122,75 +132,87 @@ void CConfigManager::Read(const std::string& filePath)
 	{
 		// 读取m_vecNewTicketConfig 相关配置数据
         auto NewTicketList = config->FirstChildElement("NewTicketList");
-		if (NewTicketList != nullptr)
+		if (NewTicketList == nullptr)
+			return false;
 		{
-			auto sizeElement = NewTicketList->FirstChildElement("Size");
-			while (sizeElement != nullptr)
+			auto TicketsizeElement = NewTicketList->FirstChildElement("Size");
+			while (TicketsizeElement != nullptr)
 			{
 				 CNewTicketConfig newTicketConfig;
-				 const tinyxml2::XMLElement* TicketIdElement = sizeElement->FirstChildElement("TicketId");
+				 const tinyxml2::XMLElement* TicketIdElement = TicketsizeElement->FirstChildElement("TicketId");
                  if (TicketIdElement && TicketIdElement->GetText())
                  {
                      newTicketConfig.m_strTicketId = TicketIdElement->GetText();
                  }
 
-				 const tinyxml2::XMLElement* LineNameElement = sizeElement->FirstChildElement("LineName");
+				 const tinyxml2::XMLElement* LineNameElement = TicketsizeElement->FirstChildElement("LineName");
 				 if (LineNameElement && LineNameElement->GetText())
 				 {
                      newTicketConfig.m_strLineName = LineNameElement->GetText();
 				 }
-                 const tinyxml2::XMLElement* PoleNumberElement = sizeElement->FirstChildElement("PoleNumber");
+                 const tinyxml2::XMLElement* PoleNumberElement = TicketsizeElement->FirstChildElement("PoleNumber");
                  if (PoleNumberElement && PoleNumberElement->GetText())
                  {
                      newTicketConfig.m_strPoleNumber = PoleNumberElement->GetText();
                  }
-				 const tinyxml2::XMLElement* BunchTypeElement = sizeElement->FirstChildElement("BunchType");
+				 const tinyxml2::XMLElement* BunchTypeElement = TicketsizeElement->FirstChildElement("BunchType");
                  if (BunchTypeElement && BunchTypeElement->GetText())
                  {
                      newTicketConfig.m_eBunchType = CNewTicketConfig:: m_vecBunchType(BunchTypeElement->GetText());
                  }
-                 const tinyxml2::XMLElement* InsulatorSliceNumElement = sizeElement->FirstChildElement("InsulatorSliceNum");
+                 const tinyxml2::XMLElement* InsulatorSliceNumElement = TicketsizeElement->FirstChildElement("InsulatorSliceNum");
                  if (InsulatorSliceNumElement && InsulatorSliceNumElement->GetText())
                  {
                      newTicketConfig.m_wInsulatorSliceNum = std::stoi(InsulatorSliceNumElement->GetText());
                  }
-				 const tinyxml2::XMLElement* LoopTypeElement = sizeElement->FirstChildElement("LoopType");
+				 const tinyxml2::XMLElement* LoopTypeElement = TicketsizeElement->FirstChildElement("LoopType");
                  if (LoopTypeElement && LoopTypeElement->GetText())
                  {
                      newTicketConfig.m_eLoopType = CNewTicketConfig::m_vecLoopType(LoopTypeElement->GetText());
                  }
-				 const tinyxml2::XMLElement* DetectionUnitElement = sizeElement->FirstChildElement("DetectionUnit");
+				 const tinyxml2::XMLElement* DetectionUnitElement = TicketsizeElement->FirstChildElement("DetectionUnit");
 				 if (DetectionUnitElement && DetectionUnitElement->GetText())
 				 {
                      newTicketConfig.m_strDetectionUnit = DetectionUnitElement->GetText();
 				 }
-                 const tinyxml2::XMLElement* DetectionPersonElement = sizeElement->FirstChildElement("DetectionPerson");
+                 const tinyxml2::XMLElement* DetectionPersonElement = TicketsizeElement->FirstChildElement("DetectionPerson");
                  if (DetectionPersonElement && DetectionPersonElement->GetText())
                  {
                      newTicketConfig.m_strDetectionPerson = DetectionPersonElement->GetText();
                  }
-                 const tinyxml2::XMLElement* CurrentTypeElement = sizeElement->FirstChildElement("CurrentType");
+                 const tinyxml2::XMLElement* CurrentTypeElement = TicketsizeElement->FirstChildElement("CurrentType");
                  if (CurrentTypeElement && CurrentTypeElement->GetText())
                  {
                      newTicketConfig.m_eCurrentType = CNewTicketConfig::m_vecCurrentType(CurrentTypeElement->GetText());
                  }
-                 const tinyxml2::XMLElement* StartTimeElement = sizeElement->FirstChildElement("StartTime");
+                 const tinyxml2::XMLElement* StartTimeElement = TicketsizeElement->FirstChildElement("StartTime");
                  if (StartTimeElement && StartTimeElement->GetText())
                  {
                      newTicketConfig.m_strStartTime = StartTimeElement->GetText();
                  }
-                 const tinyxml2::XMLElement* EndTimeElement = sizeElement->FirstChildElement("EndTime");
+                 const tinyxml2::XMLElement* EndTimeElement = TicketsizeElement->FirstChildElement("EndTime");
                  if (EndTimeElement && EndTimeElement->GetText())
                  {
                      newTicketConfig.m_strEndTime = EndTimeElement->GetText();
                  }
-                 const tinyxml2::XMLElement* RemarkElement = sizeElement->FirstChildElement("Remark");
+                 const tinyxml2::XMLElement* RemarkElement = TicketsizeElement->FirstChildElement("Remark");
                  if (RemarkElement && RemarkElement->GetText())
                  {
                      newTicketConfig.m_strRemark = RemarkElement->GetText();
                  }
+				 const tinyxml2::XMLElement* MapTicketMearDataElement = TicketsizeElement->FirstChildElement("TicketMearData");
+				 if (MapTicketMearDataElement && MapTicketMearDataElement->GetText())
+				 {
+					 // 测量数据以JSON文本存储,解析为QJsonObject
+					 QByteArray jsonBytes = QByteArray::fromStdString(MapTicketMearDataElement->GetText());
+					 QJsonParseError parseError;
+					 QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonBytes, &parseError);
+					 if (parseError.error == QJsonParseError::NoError && jsonDoc.isObject())
+						 newTicketConfig.m_mapTicketMearData = jsonDoc.object();
+				 }
+
 				 m_vecNewTicketConfig.push_back(newTicketConfig);
-				 sizeElement = sizeElement->NextSiblingElement("Size");
+				 TicketsizeElement = TicketsizeElement->NextSiblingElement("Size");
 			}
 		}
 
@@ -198,51 +220,43 @@ void CConfigManager::Read(const std::string& filePath)
 	{
 		// 读取m_vecNewReportConfig 相关配置数据
         auto NewReportList = config->FirstChildElement("NewReportList");
-        if (NewReportList != nullptr)
+        if (NewReportList == nullptr)
+			return false;
         {
-            auto sizeElement = NewReportList->FirstChildElement("Size");
-            while (sizeElement != nullptr)
+            auto ReportsizeElement = NewReportList->FirstChildElement("Size");
+            while (ReportsizeElement != nullptr)
             {
                 CNewReportConfig newReportConfig;
-                const tinyxml2::XMLElement* DetectionPersonElement = sizeElement->FirstChildElement("DetectionPerson");
+                const tinyxml2::XMLElement* DetectionPersonElement = ReportsizeElement->FirstChildElement("DetectionPerson");
                 if (DetectionPersonElement && DetectionPersonElement->GetText())
                 {
                     newReportConfig.m_strDetectionPerson = DetectionPersonElement->GetText();
                 }
-                const tinyxml2::XMLElement* DetectionUnitElement = sizeElement->FirstChildElement("DetectionUnit");
+                const tinyxml2::XMLElement* DetectionUnitElement = ReportsizeElement->FirstChildElement("DetectionUnit");
                 if (DetectionUnitElement && DetectionUnitElement->GetText())
                 {
                     newReportConfig.m_strDetectionUnit = DetectionUnitElement->GetText();
                 }
-                const tinyxml2::XMLElement* ReportIdElement = sizeElement->FirstChildElement("ReportId");
+                const tinyxml2::XMLElement* ReportIdElement = ReportsizeElement->FirstChildElement("ReportId");
                 if (ReportIdElement && ReportIdElement->GetText())
                 {
                     newReportConfig.m_strReportId = ReportIdElement->GetText();
                 }
-                const tinyxml2::XMLElement* WorkPlaceElement = sizeElement->FirstChildElement("WorkPlace");
+                const tinyxml2::XMLElement* WorkPlaceElement = ReportsizeElement->FirstChildElement("WorkPlace");
                 if (WorkPlaceElement && WorkPlaceElement->GetText())
                 {
                     newReportConfig.m_strWorkPlace = WorkPlaceElement->GetText();
                 }
-                const tinyxml2::XMLElement* MapTicketMearDataElement = sizeElement->FirstChildElement("TicketMearData");
-				if (MapTicketMearDataElement && MapTicketMearDataElement->GetText())
-				{
-                    std::string base64Str = MapTicketMearDataElement->GetText();
-					QMap<QString, QMap<QString, QVector<float>>> map;
-					QString qBase64 = QString::fromStdString(base64Str);
-					QByteArray bin = base64ToBinary(qBase64);
-					fromBinaryData(bin, map);
-					newReportConfig.m_mapTicketMearData = map;
-				}
-
+               
                 m_vecNewReportConfig.push_back(newReportConfig);
-                sizeElement = sizeElement->NextSiblingElement("Size");
+                ReportsizeElement = ReportsizeElement->NextSiblingElement("Size");
             }
         }
 	}
+	return true;
 }
 
-void CConfigManager::Write(const std::string& filePath)
+bool CConfigManager::Write(const std::string& filePath)
 {
 	tinyxml2::XMLDocument doc;
 	// 添加 XML 声明
@@ -284,6 +298,10 @@ void CConfigManager::Write(const std::string& filePath)
 		tinyxml2::XMLElement* speedElem = doc.NewElement("WalkMotorSpeed");
 		speedElem->SetText(m_memControlBoardConfig.m_cWalkMotorSpeed);
 		deviceBoard->InsertEndChild(speedElem);
+
+        tinyxml2::XMLElement* ServoElem = doc.NewElement("ServoSpeed");
+		ServoElem->SetText(m_memControlBoardConfig.m_cServoSpeed);
+        deviceBoard->InsertEndChild(ServoElem);
 
         tinyxml2::XMLElement* upElem2 = doc.NewElement("UpAngle2");
         upElem2->SetText(m_memControlBoardConfig.m_cUpAngle2);
@@ -384,6 +402,13 @@ void CConfigManager::Write(const std::string& filePath)
                 tinyxml2::XMLElement* remarkElement = doc.NewElement("Remark");
                 remarkElement->SetText(newTicketConfig.m_strRemark.c_str());
                 sizeElement->InsertEndChild(remarkElement);
+
+				tinyxml2::XMLElement* ticketMearDataElement = doc.NewElement("TicketMearData");
+				// 测量数据序列化为JSON文本存储
+				QJsonDocument jsonDoc(newTicketConfig.m_mapTicketMearData);
+				std::string jsonStr = jsonDoc.toJson(QJsonDocument::Compact).toStdString();
+				ticketMearDataElement->SetText(jsonStr.c_str());
+				sizeElement->InsertEndChild(ticketMearDataElement);
             }
         }
     }
@@ -413,11 +438,6 @@ void CConfigManager::Write(const std::string& filePath)
                 detectionUnitElement->SetText(newReportConfig.m_strDetectionUnit.c_str());
                 sizeElement->InsertEndChild(detectionUnitElement);
 
-                tinyxml2::XMLElement* ticketMearDataElement = doc.NewElement("TicketMearData");
-				QByteArray btData = toBinaryData(newReportConfig.m_mapTicketMearData);
-				QString base64Str = binaryToBase64(btData);
-				ticketMearDataElement->SetText(base64Str.toStdString().c_str());
-				sizeElement->InsertEndChild(ticketMearDataElement);
 			}
         }
     }
@@ -426,6 +446,7 @@ void CConfigManager::Write(const std::string& filePath)
 	tinyxml2::XMLError eResult = doc.SaveFile(filePath.c_str());
 	if (eResult != tinyxml2::XML_SUCCESS)
 	{
-		// 可根据项目规范添加日志记录或异常处理
+		return false; //可根据项目规范添加日志记录或异常处理
 	}
+	return true;
 }
