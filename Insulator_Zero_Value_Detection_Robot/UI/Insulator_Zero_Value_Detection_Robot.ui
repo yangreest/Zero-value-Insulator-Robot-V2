@@ -1326,6 +1326,37 @@ QPushButton:checked {
              </attribute>
             </widget>
            </item>
+           <item row="3" column="1">
+            <widget class="QPushButton" name="pushButton_30">
+             <property name="minimumSize">
+              <size>
+               <width>114</width>
+               <height>25</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton
+{
+	background-color:#D97706;
+	color:#FFFFFF;
+	border:none;
+	border-radius:8px;
+}
+QPushButton:checked {
+    background-color: #4d2a02;
+    color: #FFFFFF;
+	border-radius:8px;
+}
+</string>
+             </property>
+             <property name="text">
+              <string>生成报告</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>
@@ -1364,7 +1395,7 @@ QPushButton:checked {
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>2</number>
+           <number>3</number>
           </property>
           <widget class="QWidget" name="stackedWidget_3Page1">
            <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -1512,11 +1543,11 @@ QPushButton:pressed
 }</string>
                     </property>
                     <property name="text">
-                     <string>放大</string>
+                     <string>刷新</string>
                     </property>
                     <property name="icon">
                      <iconset resource="Insulator_Zero_Value_Detection_Robot.qrc">
-                      <normaloff>:/ICON/Icon/放大.svg</normaloff>:/ICON/Icon/放大.svg</iconset>
+                      <normaloff>:/ICON/Icon/refrsh.svg</normaloff>:/ICON/Icon/refrsh.svg</iconset>
                     </property>
                    </widget>
                   </item>
@@ -5972,16 +6003,432 @@ border :none;
 
 }
 
+QLabel{
+color:#d1d5db;
+}
+
+QPushButton{
+background-color:#222833;
+color:white;
+border:1px solid #444c5a;
+border-radius:4px;
+padding:4px 12px;
+}
+QPushButton:hover{
+border-color:#60a5fa;
+}
+QPushButton:pressed{
+background-color:#303846;
+}
+QPushButton:disabled{
+color:#6b7280;
+border-color:#2b3240;
+}
+
+QLineEdit{
+color:#d1d5db;
+background-color:#1A202B;
+border:1px solid #d1d5db;
+border-radius:2px;
+}
+
+QTextEdit{
+color:#d1d5db;
+background-color:#1A202B;
+border:1px solid #444c5a;
+border-radius:2px;
+}
+
 </string>
                 </property>
                 <property name="title">
                  <string/>
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout_14">
+                 <property name="leftMargin">
+                  <number>6</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>6</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>6</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>6</number>
+                 </property>
                  <item>
                   <widget class="QLabel" name="label_95">
+                   <property name="styleSheet">
+                    <string notr="true">color:#60a5fa;font-size:14pt;font-weight:bold;</string>
+                   </property>
                    <property name="text">
-                    <string/>
+                    <string>阻值单点校准</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <layout class="QGridLayout" name="gridLayout_Calib">
+                   <property name="verticalSpacing">
+                    <number>8</number>
+                   </property>
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_CalibStdTip">
+                     <property name="text">
+                      <string>标准电阻值(MΩ)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QLineEdit" name="lineEdit_CalibStd">
+                     <property name="maximumSize">
+                      <size>
+                       <width>120</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                     <property name="styleSheet">
+                      <string notr="true">color:#d1d5db;
+border:1px solid #d1d5db;
+border-radius:2px;</string>
+                     </property>
+                     <property name="text">
+                      <string>500</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="2" colspan="2">
+                    <widget class="QLabel" name="label_CalibStdHint">
+                     <property name="styleSheet">
+                      <string notr="true">color:#6b7280;</string>
+                     </property>
+                     <property name="text">
+                      <string>建议500~1000MΩ（√x模型中段最稳）</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_CalibStep1">
+                     <property name="text">
+                      <string>① 恢复默认(0x05)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QPushButton" name="pushButton_CalibReset">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="2" colspan="2">
+                    <widget class="QLabel" name="label_CalibStep1State">
+                     <property name="styleSheet">
+                      <string notr="true">color:#6b7280;</string>
+                     </property>
+                     <property name="text">
+                      <string>未执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_CalibStep2">
+                     <property name="text">
+                      <string>② 测原始值(连测3次)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QPushButton" name="pushButton_CalibMeasure">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="2" colspan="2">
+                    <widget class="QLabel" name="label_CalibStep2State">
+                     <property name="styleSheet">
+                      <string notr="true">color:#6b7280;</string>
+                     </property>
+                     <property name="text">
+                      <string>未执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_CalibRawTip">
+                     <property name="text">
+                      <string>三次实测(MΩ)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QLabel" name="label_CalibRaw1">
+                     <property name="text">
+                      <string>--</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="2">
+                    <widget class="QLabel" name="label_CalibRaw2">
+                     <property name="text">
+                      <string>--</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="3">
+                    <widget class="QLabel" name="label_CalibRaw3">
+                     <property name="text">
+                      <string>--</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_CalibRawAvgTip">
+                     <property name="text">
+                      <string>原始值平均(MΩ)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1" colspan="3">
+                    <widget class="QLabel" name="label_CalibRawAvg">
+                     <property name="styleSheet">
+                      <string notr="true">color:#10b981;font-weight:bold;</string>
+                     </property>
+                     <property name="text">
+                      <string>--</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_CalibStep3">
+                     <property name="text">
+                      <string>③ 下发定标(0x0E)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QPushButton" name="pushButton_CalibDo">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="2" colspan="2">
+                    <widget class="QLabel" name="label_CalibStep3State">
+                     <property name="styleSheet">
+                      <string notr="true">color:#6b7280;</string>
+                     </property>
+                     <property name="text">
+                      <string>未执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="0">
+                    <widget class="QLabel" name="label_CalibCoefTip">
+                     <property name="text">
+                      <string>补偿系数 c</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="1">
+                    <widget class="QLabel" name="label_CalibCoef">
+                     <property name="styleSheet">
+                      <string notr="true">color:#10b981;font-weight:bold;</string>
+                     </property>
+                     <property name="text">
+                      <string>--</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="2" colspan="2">
+                    <widget class="QPushButton" name="pushButton_CalibReadCoef">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>读回系数(0x0C)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="0">
+                    <widget class="QLabel" name="label_CalibStep4">
+                     <property name="text">
+                      <string>④ 验证</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="1">
+                    <widget class="QPushButton" name="pushButton_CalibVerify">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>触发实测</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="2">
+                    <widget class="QPushButton" name="pushButton_CalibCheck">
+                     <property name="styleSheet">
+                      <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                     </property>
+                     <property name="text">
+                      <string>离线抽查(0x0A)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="3">
+                    <widget class="QLabel" name="label_CalibStep4State">
+                     <property name="styleSheet">
+                      <string notr="true">color:#6b7280;</string>
+                     </property>
+                     <property name="text">
+                      <string>未执行</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="8" column="0">
+                    <widget class="QLabel" name="label_CalibResultTip">
+                     <property name="text">
+                      <string>验证结果</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="8" column="1" colspan="3">
+                    <widget class="QLabel" name="label_CalibResult">
+                     <property name="styleSheet">
+                      <string notr="true">color:#10b981;font-weight:bold;</string>
+                     </property>
+                     <property name="text">
+                      <string>--</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="label_CalibLogTip">
+                   <property name="text">
+                    <string>流程日志</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QTextEdit" name="textEdit_CalibLog">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="readOnly">
+                    <bool>true</bool>
                    </property>
                   </widget>
                  </item>

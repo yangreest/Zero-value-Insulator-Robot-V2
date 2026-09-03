@@ -18,6 +18,20 @@ CSensorData::CSensorData()
 	m_wValue = 0;
 }
 
+CCalibAnswer::CCalibAnswer()
+{
+	m_cSubCmd = 0;
+	m_cResult = 0;
+	m_cReason = 0;
+	m_nValue1 = 0;
+	m_nValue2 = 0;
+}
+
+bool CCalibAnswer::IsSuccess() const
+{
+	return m_cResult == 0x01;
+}
+
 CControlBoardProtocolConfig::CControlBoardProtocolConfig()
 {
 	m_wLidarMinDis = 0;
@@ -177,6 +191,7 @@ CWHSDControlBoardProtocol::CWHSDControlBoardProtocol(uint16_t wHeartBeatTime)
 	m_nOTAAllPacks = 0;
 	m_function_OTAStatusCallBack = nullptr;
 	m_function_SensorDataCallBack = nullptr;
+	m_function_CalibCallBack = nullptr;
 }
 
 bool CWHSDControlBoardProtocol::BeginWork()
@@ -303,37 +318,45 @@ bool CWHSDControlBoardProtocol::Parse()
 					}
 					case 0x0f:
 					{
-						// 数据缓冲区 Byte2~Byte9：buffer[contentOffset+2] ~ buffer[contentOffset+9]
+						// 测量结果回报：X值位于数据域第7~10字节（1-based），int32有符号大端毫值
+						// 未校准时回报原始值，定标生效后回报修正值
+						if (m_vectorCmdData.size() < 10)
+						{
+							break;
+						}
 						const uint8_t datatype = m_vectorCmdData[1];
 
-						// 【重要】当前默认小端；如需大端，自行调换字节顺序
 						switch (datatype)
 						{
 						case 0: // int32
 						{
-							uint32_t raw = (static_cast<uint32_t>(m_vectorCmdData[6]) << 24)
-								| (static_cast<uint32_t>(m_vectorCmdData[7]) << 16)
-								| (static_cast<uint32_t>(m_vectorCmdData[8]) << 8)
-								| static_cast<uint32_t>(m_vectorCmdData[9]);
-							float ZeroData = static_cast<float>(raw) / 1000.0f;
-							m_function_ZeroDataCallBack(&ZeroData);
+							// X值有符号，用uint32接会把负值解成巨大正数
+							const int32_t nRaw = GetInt32BE(m_vectorCmdData.data() + 6);
+							float ZeroData = static_cast<float>(nRaw) / 1000.0f;
+							if (m_function_ZeroDataCallBack != nullptr)
+							{
+								m_function_ZeroDataCallBack(&ZeroData);
+							}
 							break;
 						}
 						case 1: // float32
 						{
-							float raw;
-							std::memcpy(&raw, m_vectorCmdData.data() + 2, sizeof(float));
 							break;
 						}
 						case 2: // double64
 						{
-							double raw;
-							std::memcpy(&raw, m_vectorCmdData.data() + 2, sizeof(double));
 							break;
 						}
 						default:
-							return false; // 未知类型
+						{
+							// 未知类型只丢弃本帧。不能return false：本帧已Erase，
+							// 提前返回会让缓冲区里后续完整帧等到下次收数据才被解析
+							break;
 						}
+						}
+						// 必须break：原代码缺break会fall-through到case 0x11，
+						// 用结果帧数据覆盖m_memCSensorData并误触发传感器回调
+						break;
 					}
 					case 0x11:
 					{
@@ -361,6 +384,33 @@ bool CWHSDControlBoardProtocol::Parse()
 							{
 								m_function_SensorDataCallBack(&m_memCSensorData);
 							}
+						}
+						break;
+					}
+					case 0x17:
+					{
+						// 校准命令应答：子命令 + 结果 + 原因 + 参数1(4B) + 参数2(4B)
+						// 子命令：0x05恢复默认 0x06查询原始值 0x0C读回系数 0x0A补偿验证 0x0E单点定标
+						if (m_vectorCmdData.size() < 3)
+						{
+							break;
+						}
+						CCalibAnswer answer;
+						answer.m_cSubCmd = m_vectorCmdData[0];
+						answer.m_cResult = m_vectorCmdData[1];
+						answer.m_cReason = m_vectorCmdData[2];
+						// 0x06只带参数1（原始X），其余子命令带参数1+参数2，按长度逐个取
+						if (m_vectorCmdData.size() >= 7)
+						{
+							answer.m_nValue1 = GetInt32BE(m_vectorCmdData.data() + 3);
+						}
+						if (m_vectorCmdData.size() >= 11)
+						{
+							answer.m_nValue2 = GetInt32BE(m_vectorCmdData.data() + 7);
+						}
+						if (m_function_CalibCallBack != nullptr)
+						{
+							m_function_CalibCallBack(answer);
 						}
 						break;
 					}
@@ -426,6 +476,11 @@ void CWHSDControlBoardProtocol::BeginOTA(const std::vector<uint8_t>& file)
 void CWHSDControlBoardProtocol::RegisterSensorDataCallBack(const std::function<void(CSensorData*)>& p)
 {
 	m_function_SensorDataCallBack = p;
+}
+
+void CWHSDControlBoardProtocol::RegisterCalibCallBack(const std::function<void(const CCalibAnswer&)>& f)
+{
+	m_function_CalibCallBack = f;
 }
 
 std::vector<uint8_t> CWHSDControlBoardProtocol::DeviceRun(uint8_t target, uint8_t enable, uint8_t runMode,
@@ -500,6 +555,62 @@ std::vector<uint8_t> CWHSDControlBoardProtocol::SetFactoryMode(bool bFactoryMode
 std::vector<uint8_t> CWHSDControlBoardProtocol::SensorCmd(uint8_t sensorIndex, uint8_t cmd, uint16_t value)
 {
 	return GetCmdData(0x11, { sensorIndex ,cmd ,(uint8_t)(value >> 8),(uint8_t)(value & 0xff) });
+}
+
+void CWHSDControlBoardProtocol::AppendInt32BE(std::vector<uint8_t>& data, int32_t nValue)
+{
+	//协议规定多字节整数一律大端（高位在前）
+	const uint32_t nRaw = static_cast<uint32_t>(nValue);
+	data.push_back(static_cast<uint8_t>((nRaw >> 24) & 0xff));
+	data.push_back(static_cast<uint8_t>((nRaw >> 16) & 0xff));
+	data.push_back(static_cast<uint8_t>((nRaw >> 8) & 0xff));
+	data.push_back(static_cast<uint8_t>(nRaw & 0xff));
+}
+
+int32_t CWHSDControlBoardProtocol::GetInt32BE(const uint8_t* p)
+{
+	//X值与定标参数均为int32有符号大端毫值，不能用uint32接，否则负值会变成巨大正数
+	const uint32_t nRaw = (static_cast<uint32_t>(p[0]) << 24)
+		| (static_cast<uint32_t>(p[1]) << 16)
+		| (static_cast<uint32_t>(p[2]) << 8)
+		| static_cast<uint32_t>(p[3]);
+	return static_cast<int32_t>(nRaw);
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibReset()
+{
+	//FF FE 09 01 17 05 23 FD FC
+	return GetCmdData(0x17, { 0x05 });
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibQueryRaw()
+{
+	//FF FE 09 01 17 06 24 FD FC
+	return GetCmdData(0x17, { 0x06 });
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibReadCoef()
+{
+	//FF FE 09 01 17 0C 2A FD FC
+	return GetCmdData(0x17, { 0x0C });
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibVerify(int32_t nRawMilli)
+{
+	//FF FE 0D 01 17 0A + 原始值(4B大端) + CHK + FD FC
+	std::vector<uint8_t> cmdData = { 0x0A };
+	AppendInt32BE(cmdData, nRawMilli);
+	return GetCmdData(0x17, cmdData);
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibSinglePoint(int32_t nStdMilli, int32_t nRawMilli)
+{
+	//FF FE 11 01 17 0E + 标准值(4B大端) + 实测原始值(4B大端) + CHK + FD FC
+	//参数必须正好8字节，否则下位机回结果00、原因05
+	std::vector<uint8_t> cmdData = { 0x0E };
+	AppendInt32BE(cmdData, nStdMilli);
+	AppendInt32BE(cmdData, nRawMilli);
+	return GetCmdData(0x17, cmdData);
 }
 
 

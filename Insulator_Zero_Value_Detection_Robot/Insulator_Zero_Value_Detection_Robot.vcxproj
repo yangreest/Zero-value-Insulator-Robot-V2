@@ -67,7 +67,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>D:\3rd\XCloud\include;D:\3rd\opencv_4_12_0\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\3rd\XCloud\include;D:\3rd\opencv_4_12_0\include;D:\SoftWare\Qt6.10\6.10.1\msvc2022_64\include\QtCore\6.10.1</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>D:\3rd\XCloud\lib;D:\3rd\opencv_4_12_0\lib</AdditionalLibraryDirectories>
@@ -103,6 +103,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Report\WriteReports.cpp" />
     <ClCompile Include="UI\contentwidget.cpp" />
     <ClCompile Include="UI\modeldatamodel.cpp" />
     <ClCompile Include="UI\modeldatawidget.cpp" />
@@ -143,6 +144,7 @@
     <ClInclude Include="Log\ScanS_WriteLog.h" />
     <ClInclude Include="Log\WriteLogIns.h" />
     <ClInclude Include="Protocol\WHSDControlBoradProtocol.h" />
+    <ClInclude Include="Report\WriteReports.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Tools\BinData.h" />
     <ClInclude Include="Tools\tinyxml2.h" />

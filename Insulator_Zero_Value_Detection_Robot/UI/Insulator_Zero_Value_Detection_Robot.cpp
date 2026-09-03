@@ -9,6 +9,9 @@
 #include <QMessageBox.h>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QDoubleValidator>
+#include <QScrollBar>
+#include <cmath>
 #include <QDateTime>
 #include <QFileDialog.h>
 #include <QVBoxLayout>
@@ -20,6 +23,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <random>
+#include <Report/WriteReports.h>
 
 static const QString strRTSP_URL = "rtsp://admin:123456@192.168.1.123/stream0";
 static const QString strRTSP_URL_2 = "rtsp://admin:123456@192.168.1.123/stream1";
@@ -45,6 +49,31 @@ static void AppendMearData(QJsonObject& root, const QString& strSide, const QStr
 	QJsonArray arrData = GetMearDataArray(root, strSide, strDira);
 	arrData.append(static_cast<double>(value));
 	SetMearDataArray(root, strSide, strDira, arrData);
+}
+
+// ===== X值单点定标流程参数（对应《单点定标协议与流程 V1.0》）=====
+// 0x0F在触发后约3.2秒主动上报，文档要求等待超时≥ 5秒
+static const int CALIB_MEASURE_TIMEOUT_MS = 6000;
+// 0x0E需擦写Flash Sector4耗时1~2秒，文档要求应答超时≥ 3秒
+static const int CALIB_FLASH_TIMEOUT_MS = 5000;
+// 0x05/0x06/0x0C/0x0A为普通命令，应答较快
+static const int CALIB_CMD_TIMEOUT_MS = 3000;
+// 测原始值连测次数（文档建议2~3次取平均）
+static const int CALIB_MEASURE_COUNT = 3;
+// 两次测量之间的间隔，给模块读数稳定的时间
+static const int CALIB_MEASURE_INTERVAL_MS = 800;
+
+// 把待发送帧转成HEX文本，便于与协议文档的示例帧逐字节比对
+static QString CalibFrameToHex(const std::vector<uint8_t>& vecData)
+{
+	QString strHex;
+	for (size_t i = 0; i < vecData.size(); ++i)
+	{
+		if (i > 0)
+			strHex += QLatin1Char(' ');
+		strHex += QString("%1").arg(vecData[i], 2, 16, QLatin1Char('0')).toUpper();
+	}
+	return strHex;
 }
 
 Insulator_Zero_Value_Detection_Robot::Insulator_Zero_Value_Detection_Robot(QWidget* parent)
@@ -179,6 +208,11 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	ui.lineEdit_10->setText(QString::fromStdString(m_pConfig->m_memCCameraConfig.m_strLeftIp));         // 左摄像头IP	
 
 	ui.lineEdit_15->setText(QString::number(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold));
+
+	// X值单点定标：按步骤进度初始化按钮可用态（自上而下顺序执行）
+	ui.lineEdit_CalibStd->setValidator(new QDoubleValidator(0.001, 100000.0, 3, ui.lineEdit_CalibStd));
+	ui.textEdit_CalibLog->clear();
+	CalibSetUiEnabled(true);
 }
 
 void Insulator_Zero_Value_Detection_Robot::InitParam()
@@ -235,6 +269,7 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 	pWHSDControlBoardProtocol->RegisterDeviceHeartBeat(std::bind(&Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat, this, std::placeholders::_1, 0));
 	pWHSDControlBoardProtocol->RegisterSensorDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterZeroDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue, this, std::placeholders::_1));
+	pWHSDControlBoardProtocol->RegisterCalibCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer, this, std::placeholders::_1));
 	//	std::placeholders::_1,
 	//	std::placeholders::_2, std::placeholders::_3));
 	//pWHSDControlBoardProtocol->RegisterXRaySendResult(xRayResult);
@@ -282,6 +317,7 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 
 	connect(ui.pushButton, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click);
 	connect(ui.pushButton_2, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Screenshot_Click);
+	connect(ui.pushButton_12, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_RefeshTable_Click);
 	connect(ui.pBClose, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Close_Click);
 	connect(ui.pBInspection, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Inspection_Click);
 	connect(ui.pBticket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Ticket_Click);
@@ -295,6 +331,7 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pBDeleteTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click);
 	connect(ui.pBChangeTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicket_Click);
 	connect(ui.pBLoadTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click);
+	connect(ui.pushButton_20, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_DeleteReport_Click);
 
 	connect(newTicketDialog, &NewTicketDialog::NewTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal);
 	connect(newTicketDialog, &NewTicketDialog::ChangeTicketSignal, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicketSignal);
@@ -311,6 +348,7 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pushButton_25, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle2_Click);
 	connect(ui.pushButton_27, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_neddle3_Click);
 	connect(ui.pushButton_28, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_mear_Click);
+	connect(ui.pushButton_30, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_WriteReport_Click);
 
 	connect(ui.comboBox_2, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
 	connect(ui.comboBox, &QComboBox::currentIndexChanged, this, &Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged);
@@ -333,6 +371,20 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pushButton_8, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveRobotIp_Click); // 机器人ip	
 	connect(ui.pushButton_9, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveCameraIp_Click); // 摄像头ip
 	connect(ui.pushButton_29, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveInsuThreshold_Click);// 保存绝缘阈值
+
+	// ===== X值单点定标（groupBox_3）：步骤自上而下顺序执行 =====
+	connect(ui.pushButton_CalibReset, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibReset_Click);
+	connect(ui.pushButton_CalibMeasure, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibMeasure_Click);
+	connect(ui.pushButton_CalibDo, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibDo_Click);
+	connect(ui.pushButton_CalibVerify, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibVerify_Click);
+	connect(ui.pushButton_CalibCheck, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibCheck_Click);
+	connect(ui.pushButton_CalibReadCoef, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibReadCoef_Click);
+
+	// 等待回测结果：下位机应答/回报在协议线程回调，用队列连接切到UI线程再推进流程
+	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibMeasureValueSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_CalibMeasureValue, Qt::QueuedConnection);
+	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibAnswerSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_CalibAnswer, Qt::QueuedConnection);
 
 
 	ui.pBInspection->setChecked(true);
@@ -609,6 +661,13 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 {
 	float value = p[0];
 
+	// 定标流程中的0x0F结果只走定标信号槽，不得写入工单测量数据与曲线（回调在协议线程）
+	if (m_bCalibMeasuring)
+	{
+		emit CalibMeasureValueSignal(static_cast<double>(value));
+		return;
+	}
+
 	if (m_pDeviceLog)
 		m_pDeviceLog->WriteFormat("收到测量结果:%.3f MΩ", value);
 
@@ -713,6 +772,501 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #f56c6c;\n}");
 		}
 	}
+}
+
+// ===================== X值单点定标流程 =====================
+// 流程对应文档§5：①恢复默认 → ②测原始值(连测3次取平均) → ③下发定标 → ④验证
+// 每步发出命令后进入等待态，下位机回报在协议线程回调，统一转成信号队列到UI线程推进
+
+void Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer(const CCalibAnswer& answer)
+{
+	// 回调运行在协议线程，不得直接操作界面，发信号由队列连接切到UI线程
+	emit CalibAnswerSignal(answer.m_cSubCmd, answer.m_cResult, answer.m_cReason,
+		answer.m_nValue1, answer.m_nValue2);
+}
+
+void Insulator_Zero_Value_Detection_Robot::CalibAppendLog(const QString& strText)
+{
+	ui.textEdit_CalibLog->append(QString("[%1] %2")
+		.arg(QDateTime::currentDateTime().toString("HH:mm:ss")).arg(strText));
+	// 自动滚到底部，保证最新一步不被遮住
+	ui.textEdit_CalibLog->verticalScrollBar()->setValue(ui.textEdit_CalibLog->verticalScrollBar()->maximum());
+	// 错误只写日志不弹模态框，避免与测量等待弹窗叠加导致界面卡死
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write(QString("定标流程:%1").arg(strText).toStdString());
+}
+
+void Insulator_Zero_Value_Detection_Robot::CalibSetStepState(QLabel* pLabel, const QString& strText, int nType)
+{
+	if (pLabel == nullptr)
+		return;
+	// 0=未执行/灰 1=进行中/蓝 2=成功/绿 3=失败/红
+	static const char* arrColor[] = { "#6b7280", "#60a5fa", "#10b981", "#f56c6c" };
+	const int nIndex = (nType >= 0 && nType <= 3) ? nType : 0;
+	pLabel->setStyleSheet(QString("color:%1;").arg(arrColor[nIndex]));
+	pLabel->setText(strText);
+}
+
+void Insulator_Zero_Value_Detection_Robot::CalibSetUiEnabled(bool bEnable)
+{
+	// 步骤自上而下顺序执行：上一步未完成时不放开下一步的按钮
+	ui.lineEdit_CalibStd->setEnabled(bEnable);
+	ui.pushButton_CalibReset->setEnabled(bEnable);
+	ui.pushButton_CalibMeasure->setEnabled(bEnable && m_bCalibResetDone);
+	ui.pushButton_CalibDo->setEnabled(bEnable && m_bCalibRawDone);
+	ui.pushButton_CalibVerify->setEnabled(bEnable && m_bCalibDoDone);
+	ui.pushButton_CalibCheck->setEnabled(bEnable && m_bCalibDoDone);
+	ui.pushButton_CalibReadCoef->setEnabled(bEnable);
+}
+
+bool Insulator_Zero_Value_Detection_Robot::CalibStartWait(ECalibStep eStep, int nTimeoutMs)
+{
+	// 工单测量流程优先：定标期间0x0F结果会被改道，两者同时进行会互相抢数据
+	if (m_nMeasureStep != 0)
+	{
+		CalibAppendLog(QStringLiteral("工单测量流程正在进行中，请等其结束后再执行定标"));
+		return false;
+	}
+	m_eCalibStep = eStep;
+	CalibSetUiEnabled(false);
+	if (m_pCalibTimeoutTimer == nullptr)
+	{
+		m_pCalibTimeoutTimer = new QTimer(this);
+		m_pCalibTimeoutTimer->setSingleShot(true);
+		connect(m_pCalibTimeoutTimer, &QTimer::timeout, this, &Insulator_Zero_Value_Detection_Robot::On_CalibTimeout);
+	}
+	m_pCalibTimeoutTimer->start(nTimeoutMs);
+	return true;
+}
+
+void Insulator_Zero_Value_Detection_Robot::CalibStopWait()
+{
+	if (m_pCalibTimeoutTimer != nullptr)
+		m_pCalibTimeoutTimer->stop();
+	m_eCalibStep = eCalibIdle;
+	m_bCalibMeasuring = false;
+	CalibSetUiEnabled(true);
+}
+
+void Insulator_Zero_Value_Detection_Robot::CalibTriggerMeasure()
+{
+	// 0x11触发一次测量，应答仅确认"检测中"，真正的值约3.2秒后由0x0F主动上报
+	CalibSendFrame(CWHSDControlBoardProtocol::SensorCmd(0, 1, 0));
+}
+
+bool Insulator_Zero_Value_Detection_Robot::CalibSendFrame(const std::vector<uint8_t>& vecData)
+{
+	if (m_pComDevice == nullptr || !m_bControlBroadConnected)
+	{
+		CalibAppendLog(QStringLiteral("控制板未连接，命令未发送"));
+		CalibStopWait();
+		return false;
+	}
+	CalibAppendLog(QStringLiteral("下行: %1").arg(CalibFrameToHex(vecData)));
+	m_pComDevice->Write(const_cast<uint8_t*>(vecData.data()), vecData.size());
+	return true;
+}
+
+bool Insulator_Zero_Value_Detection_Robot::CalibGetStdMilli(qint32& nStdMilli)
+{
+	bool bOk = false;
+	const double dStd = ui.lineEdit_CalibStd->text().trimmed().toDouble(&bOk);
+	if (!bOk || dStd <= 0.0)
+		return false;
+	// 毫值 = 物理值 × 1000 的整数（500 MΩ → 500000）
+	nStdMilli = static_cast<qint32>(qRound(dStd * 1000.0));
+	return nStdMilli > 0;
+}
+
+QString Insulator_Zero_Value_Detection_Robot::CalibReasonText(quint8 cReason)
+{
+	switch (cReason)
+	{
+	case 0x01:
+		return QStringLiteral("距上次0x0F回报超5秒，原始值已失效，请重新触发检测");
+	case 0x04:
+		return QStringLiteral("Flash写失败，可重发；反复失败需检查Flash");
+	case 0x05:
+		return QStringLiteral("参数长度/格式错误（参数必须正好8字节）");
+	case 0x09:
+		return QStringLiteral("参数非法：标准值或原始值≤0，或原始值≥标准值（负补偿需求），模块读数偏高，请检查硬件，勿强行定标");
+	default:
+		return QStringLiteral("未知原因码 0x%1").arg(cReason, 2, 16, QLatin1Char('0')).toUpper();
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibReset_Click()
+{
+	if (m_eCalibStep != eCalibIdle)
+		return;
+
+	qint32 nStdMilli = 0;
+	if (!CalibGetStdMilli(nStdMilli))
+	{
+		CalibAppendLog(QStringLiteral("标准电阻值非法，请先填入大于0的数值（单位MΩ）"));
+		CalibSetStepState(ui.label_CalibStep1State, QStringLiteral("标准值非法"), 3);
+		return;
+	}
+
+	CalibAppendLog(QStringLiteral("① 恢复默认(0x17/0x05)：清空两点系数/折点表/公式系数，测量通道直通"));
+	// 先占等待态：失败（如工单测量流程在跑）时直接返回，不能把已取得的数据和步骤态抹掉
+	if (!CalibStartWait(eCalibWaitReset, CALIB_CMD_TIMEOUT_MS))
+		return;
+
+	// 清空旧校准后系数失效，后续步骤必须重做
+	m_bCalibResetDone = false;
+	m_bCalibRawDone = false;
+	m_bCalibDoDone = false;
+	m_nCalibMeasureIndex = 0;
+	m_dCalibRawAvg = 0.0;
+	m_arCalibRaw[0] = m_arCalibRaw[1] = m_arCalibRaw[2] = 0.0;
+	ui.label_CalibRaw1->setText(QStringLiteral("--"));
+	ui.label_CalibRaw2->setText(QStringLiteral("--"));
+	ui.label_CalibRaw3->setText(QStringLiteral("--"));
+	ui.label_CalibRawAvg->setText(QStringLiteral("--"));
+	ui.label_CalibCoef->setText(QStringLiteral("--"));
+	ui.label_CalibResult->setText(QStringLiteral("--"));
+	CalibSetStepState(ui.label_CalibStep2State, QStringLiteral("未执行"), 0);
+	CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("未执行"), 0);
+	CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("未执行"), 0);
+	CalibSetStepState(ui.label_CalibStep1State, QStringLiteral("等待应答..."), 1);
+	CalibSendFrame(CWHSDControlBoardProtocol::CalibReset());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibMeasure_Click()
+{
+	if (m_eCalibStep != eCalibIdle || !m_bCalibResetDone)
+		return;
+
+	CalibAppendLog(QStringLiteral("② 测原始值：已挂标准电阻并读数稳定后，连测%1次取平均")
+		.arg(CALIB_MEASURE_COUNT));
+
+	// 先占等待态再清数据：CalibStartWait可能因工单测量流程在跑而拒绝，
+	// 拒绝时不得抹掉上一轮已取得的三次原始值
+	if (!CalibStartWait(eCalibWaitMeasure, CALIB_MEASURE_TIMEOUT_MS))
+		return;
+
+	m_nCalibMeasureIndex = 0;
+	m_dCalibRawAvg = 0.0;
+	m_arCalibRaw[0] = m_arCalibRaw[1] = m_arCalibRaw[2] = 0.0;
+	ui.label_CalibRaw1->setText(QStringLiteral("--"));
+	ui.label_CalibRaw2->setText(QStringLiteral("--"));
+	ui.label_CalibRaw3->setText(QStringLiteral("--"));
+	ui.label_CalibRawAvg->setText(QStringLiteral("--"));
+	m_bCalibRawDone = false;
+	CalibSetStepState(ui.label_CalibStep2State, QStringLiteral("第1/%1次测量...").arg(CALIB_MEASURE_COUNT), 1);
+
+	// 置位后0x0F结果改走定标信号槽，不再写入工单测量数据
+	m_bCalibMeasuring = true;
+	CalibTriggerMeasure();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibMeasureValue(double dValue)
+{
+	if (m_eCalibStep == eCalibWaitMeasure)
+	{
+		if (m_nCalibMeasureIndex >= CALIB_MEASURE_COUNT)
+			return;
+
+		// 记录本次原始值（此时已执行0x05恢复默认，0x0F回报的就是未补偿的原始值）
+		m_arCalibRaw[m_nCalibMeasureIndex] = dValue;
+		CalibAppendLog(QStringLiteral("第%1次原始值: %2 MΩ")
+			.arg(m_nCalibMeasureIndex + 1).arg(dValue, 0, 'f', 3));
+		switch (m_nCalibMeasureIndex)
+		{
+		case 0: ui.label_CalibRaw1->setText(QString::number(dValue, 'f', 3)); break;
+		case 1: ui.label_CalibRaw2->setText(QString::number(dValue, 'f', 3)); break;
+		default: ui.label_CalibRaw3->setText(QString::number(dValue, 'f', 3)); break;
+		}
+		++m_nCalibMeasureIndex;
+
+		// 文档建议：0x0F回报后5秒内可用0x06复核原始值，此处只做比对日志，不阻塞流程
+		CalibSendFrame(CWHSDControlBoardProtocol::CalibQueryRaw());
+
+		if (m_nCalibMeasureIndex < CALIB_MEASURE_COUNT)
+		{
+			CalibSetStepState(ui.label_CalibStep2State,
+				QStringLiteral("第%1/%2次测量...").arg(m_nCalibMeasureIndex + 1).arg(CALIB_MEASURE_COUNT), 1);
+			// 重启超时定时器，继续等下一次回报
+			m_pCalibTimeoutTimer->start(CALIB_MEASURE_TIMEOUT_MS);
+			QTimer::singleShot(CALIB_MEASURE_INTERVAL_MS, this, [this]() {
+				if (m_eCalibStep == eCalibWaitMeasure)
+					CalibTriggerMeasure();
+				});
+			return;
+		}
+
+		// 三次完成，取平均值作为定标用的实测原始值
+		double dSum = 0.0;
+		for (int i = 0; i < CALIB_MEASURE_COUNT; ++i)
+			dSum += m_arCalibRaw[i];
+		m_dCalibRawAvg = dSum / CALIB_MEASURE_COUNT;
+		ui.label_CalibRawAvg->setText(QString::number(m_dCalibRawAvg, 'f', 3));
+		m_bCalibRawDone = true;
+		CalibSetStepState(ui.label_CalibStep2State,
+			QStringLiteral("完成，平均 %1 MΩ").arg(m_dCalibRawAvg, 0, 'f', 3), 2);
+		CalibAppendLog(QStringLiteral("② 完成：%1次原始值平均 = %2 MΩ（毫值 %3）")
+			.arg(CALIB_MEASURE_COUNT).arg(m_dCalibRawAvg, 0, 'f', 3)
+			.arg(static_cast<qint64>(qRound(m_dCalibRawAvg * 1000.0))));
+		CalibStopWait();
+		return;
+	}
+
+	if (m_eCalibStep == eCalibWaitVerify)
+	{
+		// 定标生效后0x0F回报的是修正值，直接对比标准值算误差
+		qint32 nStdMilli = 0;
+		const bool bStdOk = CalibGetStdMilli(nStdMilli);
+		const double dStd = bStdOk ? (static_cast<double>(nStdMilli) / 1000.0) : 0.0;
+		const double dErrPercent = (dStd > 0.0) ? ((dValue - dStd) / dStd * 100.0) : 0.0;
+		ui.label_CalibResult->setText(QStringLiteral("%1 MΩ（标准 %2 MΩ，误差 %3%）")
+			.arg(dValue, 0, 'f', 3).arg(dStd, 0, 'f', 3).arg(dErrPercent, 0, 'f', 2));
+		CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("验证完成"), 2);
+		CalibAppendLog(QStringLiteral("④ 验证：0x0F回报修正值 %1 MΩ，标准 %2 MΩ，误差 %3%")
+			.arg(dValue, 0, 'f', 3).arg(dStd, 0, 'f', 3).arg(dErrPercent, 0, 'f', 2));
+		CalibStopWait();
+		return;
+	}
+
+	// 非定标等待态收到的值属于工单测量流程，此处不处理
+	CalibAppendLog(QStringLiteral("收到非定标流程的测量值 %1 MΩ，已忽略").arg(dValue, 0, 'f', 3));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibDo_Click()
+{
+	if (m_eCalibStep != eCalibIdle || !m_bCalibRawDone)
+		return;
+
+	qint32 nStdMilli = 0;
+	if (!CalibGetStdMilli(nStdMilli))
+	{
+		CalibAppendLog(QStringLiteral("标准电阻值非法，无法下发定标"));
+		CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("标准值非法"), 3);
+		return;
+	}
+
+	// 实测原始值取三次平均，转int32毫值大端
+	const qint32 nRawMilli = static_cast<qint32>(qRound(m_dCalibRawAvg * 1000.0));
+	const double dStd = static_cast<double>(nStdMilli) / 1000.0;
+
+	// 上位机先做一遍合法性检查：原始值≥标准值属负补偿需求，下位机会回原因09
+	if (nRawMilli <= 0 || nRawMilli >= nStdMilli)
+	{
+		CalibAppendLog(QStringLiteral("③ 参数非法：原始值平均 %1 MΩ 必须大于0且小于标准值 %2 MΩ；模块读数偏高，请检查接线与硬件，勿强行定标")
+			.arg(m_dCalibRawAvg, 0, 'f', 3).arg(dStd, 0, 'f', 3));
+		CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("参数非法"), 3);
+		return;
+	}
+
+	// 固件内部自行核算：p% = (1 − 原始值/标准值)×100，c = p ÷ √原始值，上位机零计算
+	// 此处只算一遍理论值用于与应答回显的a比对
+	const double dP = (1.0 - m_dCalibRawAvg / dStd) * 100.0;
+	const double dExpectC = dP / std::sqrt(m_dCalibRawAvg);
+	CalibAppendLog(QStringLiteral("③ 下发定标(0x17/0x0E)：标准值 %1 毫值 + 原始值 %2 毫值；理论 c ≈ %3")
+		.arg(nStdMilli).arg(nRawMilli).arg(dExpectC, 0, 'f', 5));
+	CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("写Flash中(1~2秒)..."), 1);
+	if (!CalibStartWait(eCalibWaitDo, CALIB_FLASH_TIMEOUT_MS))
+		return;
+	CalibSendFrame(CWHSDControlBoardProtocol::CalibSinglePoint(nStdMilli, nRawMilli));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibVerify_Click()
+{
+	if (m_eCalibStep != eCalibIdle || !m_bCalibDoDone)
+		return;
+
+	CalibAppendLog(QStringLiteral("④ 验证：定标生效后0x0F回报修正值，对比标准值看误差"));
+	CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("等待修正值..."), 1);
+	if (!CalibStartWait(eCalibWaitVerify, CALIB_MEASURE_TIMEOUT_MS))
+		return;
+	m_bCalibMeasuring = true;
+	CalibTriggerMeasure();
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibCheck_Click()
+{
+	if (m_eCalibStep != eCalibIdle || !m_bCalibDoDone)
+		return;
+
+	if (m_dCalibRawAvg <= 0.0)
+	{
+		CalibAppendLog(QStringLiteral("离线抽查需先完成步骤②取得原始值平均值"));
+		return;
+	}
+
+	// 不挂电阻，直接把原始值下发，下位机回显"原始值 + 校准后值"
+	const qint32 nRawMilli = static_cast<qint32>(qRound(m_dCalibRawAvg * 1000.0));
+	CalibAppendLog(QStringLiteral("④ 离线抽查(0x17/0x0A)：不挂电阻，下发原始值 %1 毫值").arg(nRawMilli));
+	CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("等待应答..."), 1);
+	if (!CalibStartWait(eCalibWaitAux, CALIB_CMD_TIMEOUT_MS))
+		return;
+	CalibSendFrame(CWHSDControlBoardProtocol::CalibVerify(nRawMilli));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibReadCoef_Click()
+{
+	if (m_eCalibStep != eCalibIdle)
+		return;
+
+	CalibAppendLog(QStringLiteral("读回系数(0x17/0x0C)：核对Flash中已存系数"));
+	if (!CalibStartWait(eCalibWaitAux, CALIB_CMD_TIMEOUT_MS))
+		return;
+	CalibSendFrame(CWHSDControlBoardProtocol::CalibReadCoef());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason,
+	qint32 nValue1, qint32 nValue2)
+{
+	const bool bSuccess = (cResult == 0x01);
+	const QString strSub = QString("%1").arg(static_cast<int>(cSubCmd), 2, 16, QLatin1Char('0')).toUpper();
+	CalibAppendLog(QStringLiteral("上行: 17 %1 结果=%2 原因=%3 参数1=%4 参数2=%5（毫值）")
+		.arg(strSub).arg(static_cast<int>(cResult)).arg(static_cast<int>(cReason)).arg(nValue1).arg(nValue2));
+
+	switch (cSubCmd)
+	{
+	case 0x05:	// 恢复默认
+	{
+		if (m_eCalibStep != eCalibWaitReset)
+			break;
+		if (bSuccess)
+		{
+			m_bCalibResetDone = true;
+			// 应答回显k/b（k=1, b=0）即直通状态，此时0x0F回报的就是原始值
+			CalibAppendLog(QStringLiteral("① 恢复默认成功，测量通道已直通（k=%1 b=%2）；请挂标准电阻预热、读数稳定后执行步骤②")
+				.arg(nValue1 / 1000.0, 0, 'f', 3).arg(nValue2 / 1000.0, 0, 'f', 3));
+			CalibSetStepState(ui.label_CalibStep1State, QStringLiteral("已恢复默认"), 2);
+		}
+		else
+		{
+			CalibAppendLog(QStringLiteral("① 恢复默认失败：%1").arg(CalibReasonText(cReason)));
+			CalibSetStepState(ui.label_CalibStep1State, QStringLiteral("失败"), 3);
+		}
+		CalibStopWait();
+		break;
+	}
+	case 0x06:	// 查询原始值：仅用于复核比对，不推进流程也不结束等待
+	{
+		if (bSuccess)
+			CalibAppendLog(QStringLiteral("0x06复核原始值: %1 MΩ").arg(nValue1 / 1000.0, 0, 'f', 3));
+		else
+			CalibAppendLog(QStringLiteral("0x06复核失败：%1").arg(CalibReasonText(cReason)));
+		break;
+	}
+	case 0x0C:	// 读回系数
+	{
+		if (bSuccess)
+		{
+			const double dC = nValue1 / 1000.0;
+			ui.label_CalibCoef->setText(QString::number(dC, 'f', 3));
+			CalibAppendLog(QStringLiteral("0x0C读回系数：a=%1 毫值 → c=%2，b=%3 毫值")
+				.arg(nValue1).arg(dC, 0, 'f', 3).arg(nValue2));
+		}
+		else
+		{
+			CalibAppendLog(QStringLiteral("0x0C读回系数失败：%1").arg(CalibReasonText(cReason)));
+		}
+		if (m_eCalibStep == eCalibWaitAux)
+			CalibStopWait();
+		break;
+	}
+	case 0x0A:	// 补偿验证
+	{
+		if (bSuccess)
+		{
+			const double dRaw = nValue1 / 1000.0;
+			const double dFixed = nValue2 / 1000.0;
+			ui.label_CalibResult->setText(QStringLiteral("离线抽查：%1 → %2 MΩ")
+				.arg(dRaw, 0, 'f', 3).arg(dFixed, 0, 'f', 3));
+			CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("抽查完成"), 2);
+			CalibAppendLog(QStringLiteral("0x0A补偿验证：原始值 %1 MΩ → 校准后 %2 MΩ")
+				.arg(dRaw, 0, 'f', 3).arg(dFixed, 0, 'f', 3));
+		}
+		else
+		{
+			CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("抽查失败"), 3);
+			CalibAppendLog(QStringLiteral("0x0A补偿验证失败：%1").arg(CalibReasonText(cReason)));
+		}
+		if (m_eCalibStep == eCalibWaitAux)
+			CalibStopWait();
+		break;
+	}
+	case 0x0E:	// 单点定标
+	{
+		if (m_eCalibStep != eCalibWaitDo)
+			break;
+		if (bSuccess)
+		{
+			// 应答回显固件算出的系数：c = a ÷ 1000，b固定为0，已立即生效并写入Flash
+			const double dC = nValue1 / 1000.0;
+			m_bCalibDoDone = true;
+			ui.label_CalibCoef->setText(QString::number(dC, 'f', 3));
+			CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("定标成功 c=%1").arg(dC, 0, 'f', 3), 2);
+			CalibAppendLog(QStringLiteral("③ 定标成功：a=%1 毫值 → c=%2，b=%3；校准已立即生效并写入Flash Sector4，掉电保存")
+				.arg(nValue1).arg(dC, 0, 'f', 3).arg(nValue2));
+			CalibAppendLog(QStringLiteral("提示：可执行步骤④验证；模块漂移后重测该电阻再发一次0x0E即可（后发覆盖先发，无须先清除）"));
+		}
+		else
+		{
+			CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("定标失败"), 3);
+			CalibAppendLog(QStringLiteral("③ 定标失败：%1").arg(CalibReasonText(cReason)));
+		}
+		CalibStopWait();
+		break;
+	}
+	default:
+	{
+		CalibAppendLog(QStringLiteral("未知的校准子命令 0x%1").arg(strSub));
+		break;
+	}
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibTimeout()
+{
+	QString strMsg;
+	switch (m_eCalibStep)
+	{
+	case eCalibWaitReset:
+	{
+		strMsg = QStringLiteral("① 恢复默认应答超时（%1ms），请检查链路与心跳").arg(CALIB_CMD_TIMEOUT_MS);
+		CalibSetStepState(ui.label_CalibStep1State, QStringLiteral("应答超时"), 3);
+		break;
+	}
+	case eCalibWaitMeasure:
+	{
+		// 未集齐三次不作数，必须重测，避免用残缺平均值污染系数
+		strMsg = QStringLiteral("② 测原始值超时：0x0F约3.2秒回报，已完成 %1/%2 次，请重新执行本步骤")
+			.arg(m_nCalibMeasureIndex).arg(CALIB_MEASURE_COUNT);
+		CalibSetStepState(ui.label_CalibStep2State,
+			QStringLiteral("超时(%1/%2)").arg(m_nCalibMeasureIndex).arg(CALIB_MEASURE_COUNT), 3);
+		m_bCalibRawDone = false;
+		break;
+	}
+	case eCalibWaitDo:
+	{
+		strMsg = QStringLiteral("③ 定标应答超时（0x0E擦写Flash需1~2秒），请重试或检查链路");
+		CalibSetStepState(ui.label_CalibStep3State, QStringLiteral("应答超时"), 3);
+		break;
+	}
+	case eCalibWaitVerify:
+	{
+		strMsg = QStringLiteral("④ 验证超时：未收到0x0F修正值回报");
+		CalibSetStepState(ui.label_CalibStep4State, QStringLiteral("超时"), 3);
+		break;
+	}
+	case eCalibWaitAux:
+	{
+		strMsg = QStringLiteral("辅助命令应答超时");
+		break;
+	}
+	default:
+	{
+		strMsg = QStringLiteral("定标等待超时（未知步骤）");
+		break;
+	}
+	}
+	CalibAppendLog(strMsg);
+	CalibStopWait();
 }
 
 void Insulator_Zero_Value_Detection_Robot::CameraConnect()
@@ -991,6 +1545,15 @@ void Insulator_Zero_Value_Detection_Robot::On_Screenshot_Click()
 		{
 			m_pDeviceLog->Write("截图保存成功:" + fileName.toStdString());
 		}
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_RefeshTable_Click()
+{
+	QMessageBox::StandardButton reply = QMessageBox::question(this, QStringLiteral("确认刷新"), QStringLiteral("是否确认刷新摄像头？"), QMessageBox::Yes | QMessageBox::No);
+	if (reply == QMessageBox::Yes) {
+		QProcess::startDetached(QApplication::applicationFilePath(), QStringList());
+		QApplication::exit();
 	}
 }
 
@@ -1372,6 +1935,35 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 	ui.pBRetest->setEnabled(true);
 }
 
+void Insulator_Zero_Value_Detection_Robot::On_DeleteReport_Click()
+{
+	int row = ui.tableWidget_3->currentRow();
+	if (row >= 0) {
+		QMessageBox::StandardButton reply = QMessageBox::question(this, QStringLiteral("确认删除"), QStringLiteral("是否确认删除选中的报告？"), QMessageBox::Yes | QMessageBox::No);
+		if (reply == QMessageBox::Yes) {
+			// 获取被删除报告的配置信息
+			CNewReportConfig deletedReport = ui.tableWidget_3->item(row, 0)->data(Qt::UserRole).value<CNewReportConfig>();
+			
+			if (m_pDeviceLog)
+				m_pDeviceLog->WriteFormat("删除报告:第 %d 行, ID:%s", row + 1, deletedReport.m_strReportId.c_str());
+			
+			// 从UI表格中移除该行
+			ui.tableWidget_3->removeRow(row);
+			
+			// 从配置管理器中移除对应的报告配置并保存
+			auto& vecReports = m_pConfig->m_vecNewReportConfig;
+			for (auto it = vecReports.begin(); it != vecReports.end(); ++it)
+			{
+				if (it->m_strReportId == deletedReport.m_strReportId)
+				{
+					vecReports.erase(it);
+					break;
+				}
+			}
+			m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+		}
+	}
+}
 void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 {
 	if (m_CurrentTicketConfig.m_strTicketId == "")
@@ -1870,6 +2462,18 @@ void Insulator_Zero_Value_Detection_Robot::On_mear_Click()
 	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
 
 	m_pComDevice->Write(cmds.data(), cmds.size());
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_WriteReport_Click()
+{
+	QHash<QString, QString> data;
+	data["name"] = "张三";
+	data["dept"] = "研发部 <嵌入式> & 测试";  // 特殊字符自动转义
+	data["phone"] = "138-0000-0000";
+
+	QString temPath = "D:\\xz\\template.docx";
+	QString output = "D:\\xz\\output.docx";
+	CWriteReports::FillDocxTemplate(temPath, output, data);
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int index)

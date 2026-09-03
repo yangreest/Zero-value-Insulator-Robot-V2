@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>检测模块X值单点定标通讯协议与校准流程</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #666666;
+    --accent: #1f4e79;
+    --line: #c9d4e0;
+    --code-bg: #f4f6f8;
+  }
+  body { font-family: "宋体", serif; color: var(--ink); font-size: 10.5pt; line-height: 1.6; }
+  h1 { font-family: "黑体", sans-serif; font-size: 20pt; color: var(--accent); text-align: center; margin: 12pt 0 4pt; }
+  h2 { font-family: "黑体", sans-serif; font-size: 14pt; color: var(--accent); border-bottom: 1.5pt solid var(--accent); padding-bottom: 3pt; margin-top: 18pt; }
+  h3 { font-family: "黑体", sans-serif; font-size: 12pt; color: var(--ink); margin-top: 12pt; }
+  p.subtitle { text-align: center; color: var(--muted); font-size: 10.5pt; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0; font-size: 9.5pt; }
+  th { background: #e8eef5; font-family: "黑体", sans-serif; }
+  th, td { border: 0.75pt solid var(--line); padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  code { font-family: "Consolas", monospace; font-size: 9pt; background: var(--code-bg); padding: 0 2pt; }
+  pre { font-family: "Consolas", monospace; font-size: 9pt; background: var(--code-bg); border: 0.75pt solid var(--line); padding: 6pt 8pt; line-height: 1.5; }
+  .note { color: var(--muted); font-size: 9.5pt; }
+  .ok { color: #1a7a34; font-weight: bold; }
+  ol li, ul li { margin: 3pt 0; }
+</style>
+</head>
+<body>
+
+<h1>检测模块 X 值单点定标通讯协议与校准流程</h1>
+<p class="subtitle">河南四达检测技术有限公司 · 悬垂线夹检测系统（主控板 STM32F405）<br>版本 V1.0 · 2026-09-02 · 对应固件 v4（0x17 / 0x0E 单点定标）· 已经实机收发验证</p>
+
+<h2>1. 概述</h2>
+<p>本文档只描述<b>单点定标</b>一种校准方式：现场只测一个标准电阻，把"标准值 + 实测原始值"一帧发给下位机，<b>固件自动计算补偿系数</b>并写入 Flash，上位机零计算。所有示例帧校验和均经复核，标注 <span class="ok">✔实测</span> 的帧已在真实硬件收发验证。</p>
+<table>
+  <tr><th style="width:22%">项目</th><th>参数</th></tr>
+  <tr><td>物理链路</td><td>主控板 UART5（115200 8N1）→ USR-C210 以太网模组 → TCP</td></tr>
+  <tr><td>网络参数</td><td>静态 IP 192.168.11.111，TCP 端口 8234</td></tr>
+  <tr><td>涉及命令</td><td>0x11 触发检测、0x0F 结果回报、0x17 校准命令（子命令 0x05 / 0x06 / 0x0C / 0x0A / 0x0E）</td></tr>
+  <tr><td>系数存储</td><td>下位机 Flash Sector4，掉电保存，上电自动加载</td></tr>
+</table>
+<p><b>术语</b>：毫值 = 物理值 × 1000 的整数（500 MΩ → 500000）；原始值 = 检测模块未经补偿的测量输出；修正值 = 补偿后的输出。</p>
+
+<h2>2. 通用帧格式</h2>
+<table>
+  <tr><th>字段</th><th>帧头</th><th>长度</th><th>地址</th><th>命令字</th><th>数据域</th><th>校验</th><th>帧尾</th></tr>
+  <tr><td>字节数</td><td>2</td><td>1</td><td>1</td><td>1</td><td>N</td><td>1</td><td>2</td></tr>
+  <tr><td>取值</td><td><code>FF FE</code></td><td>整帧总字节数</td><td><code>01</code></td><td>CMD</td><td>—</td><td>CHK</td><td><code>FD FC</code></td></tr>
+</table>
+<ul>
+  <li>长度 LEN = 从帧头到帧尾的<b>整帧总字节数</b>（含 LEN 与 CHK 自身）；</li>
+  <li>校验 CHK = 从帧头到数据域末尾<b>所有字节累加和的低 8 位</b>；</li>
+  <li>多字节整数一律<b>大端</b>（高位在前）；X 值与定标参数均为 int32 毫值。</li>
+</ul>
+
+<h2>3. 定标原理</h2>
+<p>固件内置补偿率公式模型，单点定标时固件按下式自动求系数：</p>
+<pre>需求补偿率  p% = (1 − 实测原始值 / 标准值) × 100
+补偿系数    c  = p ÷ √实测原始值            （b 固定为 0）</pre>
+<p>定标后，每次测量按 <b>p = c × √x</b> 计算补偿率，输出修正值 <b>y = x / (1 − p/100)</b>。安全钳位：p &lt; 0 按 0 计，p &gt; 95% 按 95% 计。定标档零误差，其余各档按 √x 规律自动延伸补偿。</p>
+
+<h2>4. 通信命令</h2>
+<h3>4.1 触发检测（0x11，下行）</h3>
+<p>数据域：<code>11 + 传感器序号 + 命令 + 00 + 00</code>，命令 0x01 = 触发一次测量。</p>
+<pre>下行: FF FE 0C 01 11 00 01 00 00 1C FD FC        <span class="ok">✔实测</span>
+应答: FF FE 0C 01 11 00 01 01 00 1D FD FC        （约 30ms 内返回，状态 01=检测中）</pre>
+<h3>4.2 测量结果回报（0x0F，上行）</h3>
+<p>触发后约 <b>3.2 秒</b>下位机主动上报，上位机等待超时建议 ≥ 5 秒。X 值位于数据域第 7~10 字节，<b>int32 有符号大端毫值</b>。未校准时回报原始值；定标生效后回报<b>修正后</b>的值。</p>
+<pre>FF FE 12 01 0F 01 00 00 00 00 00 00 08 24 CF 1B FD FC   → X = 0x000824CF = 533.711 MΩ <span class="ok">✔实测</span></pre>
+<h3>4.3 恢复默认（0x17 / 0x05）</h3>
+<p>清空全部校准（两点系数、折点表、公式系数），恢复直通（0x0F 直接回报原始值）。定标前必发。</p>
+<pre>下行: FF FE 09 01 17 05 23 FD FC
+应答: 17 05 01 00 + k/b 回显（k=1, b=0）</pre>
+<h3>4.4 查询原始值（0x17 / 0x06）</h3>
+<p>回传最近一次原始 X（int32 毫值）。只认<b>最近一次 0x0F 回报后 5 秒内</b>刷新的值，超时返回"结果=00，原因=01"。</p>
+<pre>下行: FF FE 09 01 17 06 24 FD FC
+应答: 17 06 01 00 + 原始X(4B int32 毫值大端)</pre>
+<h3>4.5 单点定标（0x17 / 0x0E，核心命令）</h3>
+<p>下行数据域：<code>17 + 0E + 标准值(4B) + 实测原始值(4B)</code>，均为 int32 毫值大端，共 8 字节参数。</p>
+<table>
+  <tr><th>字节</th><th>含义</th><th>示例（500 MΩ / 实测 419.333 MΩ）</th></tr>
+  <tr><td>0</td><td>命令字 0x17</td><td><code>17</code></td></tr>
+  <tr><td>1</td><td>子命令 0x0E</td><td><code>0E</code></td></tr>
+  <tr><td>2~5</td><td>标准值（int32 毫值大端）</td><td><code>00 07 A1 20</code> = 500000 → 500 MΩ</td></tr>
+  <tr><td>6~9</td><td>实测原始值（int32 毫值大端）</td><td><code>00 06 66 05</code> = 419333 → 419.333 MΩ</td></tr>
+</table>
+<p>应答数据域：<code>17 + 0E + 结果 + 原因 + a毫值(4B) + b毫值(4B)</code>。成功时回显固件算出的系数（c = a ÷ 1000，b = 0），校准<b>立即生效并写入 Flash</b>。</p>
+<pre>下行: FF FE 11 01 17 0E 00 07 A1 20 00 06 66 05 6D FD FC   <span class="ok">✔实测</span>
+应答: FF FE 13 01 17 0E 01 00 00 00 03 14 00 00 00 00 4E FD FC   <span class="ok">✔实测</span>
+      （结果 01 成功；a = 0x00000314 = 788 → c = 0.788；b = 0）</pre>
+<p>固件内部核算：p% = (1 − 419.333/500) × 100 = 16.1334%；c = 16.1334 ÷ √419.333 = 0.78786 ≈ <b>0.788</b>。定标档零误差（419.333 → 500.02 MΩ）。</p>
+<table>
+  <tr><th style="width:16%">应答</th><th>含义与处理</th></tr>
+  <tr><td><code>01 00</code></td><td>成功，回显生效系数 a/b</td></tr>
+  <tr><td><code>00 04</code></td><td>Flash 写失败，重发；反复失败检查 Flash</td></tr>
+  <tr><td><code>00 05</code></td><td>参数长度/格式错误（参数必须正好 8 字节）</td></tr>
+  <tr><td><code>00 09</code></td><td>参数非法：标准值或原始值 ≤ 0，或原始值 ≥ 标准值（负补偿需求）。此时说明模块读数偏高，应检查硬件，勿强行定标</td></tr>
+</table>
+<h3>4.6 辅助验证命令（可选）</h3>
+<p><b>读回系数（0x0C）</b>：核对 Flash 中已存系数。<code>FF FE 09 01 17 0C 2A FD FC</code>，应答回显 a/b 毫值。</p>
+<p><b>补偿验证（0x0A）</b>：不挂电阻，直接下发任意原始值，回显"原始值 + 校准后值"。例：验证原始值 788 MΩ（788000 毫 = <code>00 0C 06 20</code>）：</p>
+<pre>下行: FF FE 0D 01 17 0A 00 0C 06 20 5E FD FC
+应答: 17 0A 01 00 + 原始值(4B) + 校准后值(4B)
+（c=0.788 时 788 → 1011.82 MΩ，即 0x000F7068）</pre>
+
+<h2>5. 校准流程</h2>
+<p>全程只需一个标准电阻、一次测量、一帧定标命令：</p>
+<ol>
+  <li><b>恢复默认</b>：发 0x05（<code>FF FE 09 01 17 05 23 FD FC</code>），清空旧校准，测量通道直通；</li>
+  <li><b>挂标准电阻</b>：建议 500~1000 MΩ 档（√x 模型中段最稳），待模块预热、读数稳定；</li>
+  <li><b>测原始值</b>：发 0x11 触发 → 等 0x0F 回报（约 3.2 秒）读出原始值；建议连测 2~3 次取平均，5 秒内可用 0x06 复核；</li>
+  <li><b>下发定标</b>：发 0x0E（标准值 + 实测原始值，毫值大端）→ 应答回显系数 a（c = a/1000）；校准立即生效、掉电保存；</li>
+  <li><b>验证</b>：换其他档电阻实测，对比 0x0F 回报与标准值；或不挂电阻发 0x0A 抽查；可用 0x0C 读回系数复核；</li>
+  <li><b>再定标</b>：模块漂移后重测该电阻，再发一次 0x0E 即可（后发覆盖先发，无须先清除）。</li>
+</ol>
+<pre>上位机                              下位机
+  |-- 0x17/0x05 恢复默认 ----------> | 清全部校准，直通
+  |-- 0x11 触发检测 ---------------> | 触发检测模块
+  |<------------- 0x0F 原始值 ------ | （约 3.2 秒）
+  |-- 0x17/0x0E 标准值+原始值 -----> | 算 c，写公式系数，存 Flash
+  |<-- 0x17/0x0E 应答(回显 a/b) ---- |
+  |-- 0x11 触发检测 ---------------> | 验证
+  |<------------- 0x0F 修正值 ------ |</pre>
+<p class="note">注意事项：① 全程保持心跳（断链 30 秒触发舵机归零）；② 测原始值与验证尽量同环境同批次完成，避免日间漂移污染系数（同一电阻不同时刻读数可差 10% 以上）；③ 0x0E 写 Flash 需 1~2 秒，上位机应答超时设 ≥ 3 秒；④ 帧尾 FD FC 后勿多发字节。</p>
+
+<h2>6. 帧速查表</h2>
+<table>
+  <tr><th>用途</th><th>完整帧（HEX）</th></tr>
+  <tr><td>触发检测 0x11</td><td><code>FF FE 0C 01 11 00 01 00 00 1C FD FC</code></td></tr>
+  <tr><td>恢复默认 0x05</td><td><code>FF FE 09 01 17 05 23 FD FC</code></td></tr>
+  <tr><td>查询原始值 0x06</td><td><code>FF FE 09 01 17 06 24 FD FC</code></td></tr>
+  <tr><td><b>单点定标 0x0E</b>（500 / 419.333）<span class="ok">✔实测</span></td><td><code>FF FE 11 01 17 0E 00 07 A1 20 00 06 66 05 6D FD FC</code></td></tr>
+  <tr><td>单点定标 0x0E（500 / 415）</td><td><code>FF FE 11 01 17 0E 00 07 A1 20 00 06 55 18 6F FD FC</code></td></tr>
+  <tr><td>单点定标 0x0E（1000 / 788）</td><td><code>FF FE 11 01 17 0E 00 0F 42 40 00 0C 06 20 F7 FD FC</code></td></tr>
+  <tr><td>读回系数 0x0C</td><td><code>FF FE 09 01 17 0C 2A FD FC</code></td></tr>
+  <tr><td>补偿验证 0x0A（原始值 788 MΩ）</td><td><code>FF FE 0D 01 17 0A 00 0C 06 20 5E FD FC</code></td></tr>
+</table>
+
+<h2>7. 异常与排查</h2>
+<table>
+  <tr><th style="width:30%">现象</th><th>原因与处理</th></tr>
+  <tr><td>0x06 应答原因 0x01</td><td>距上次 0x0F 超 5 秒；重新触发检测后立即查询</td></tr>
+  <tr><td>0x0E 应答原因 0x09</td><td>标准值/原始值 ≤ 0，或原始值 ≥ 标准值；检查接线与模块读数，勿强行定标</td></tr>
+  <tr><td>0x0E 应答原因 0x05</td><td>参数不是 8 字节；检查组帧（标准值 4B + 原始值 4B，毫值大端）</td></tr>
+  <tr><td>定标后各档整体偏移</td><td>模块日间漂移；同环境重测基准档，再发一次 0x0E</td></tr>
+  <tr><td>0x0E 应答慢（1~2 秒）</td><td>正常现象（需擦写 Flash Sector4），超时设 ≥ 3 秒</td></tr>
+</table>
+
+<h2>8. 版本记录</h2>
+<table>
+  <tr><th>版本</th><th>日期</th><th>说明</th></tr>
+  <tr><td><b>V1.0</b></td><td><b>2026-09-02</b></td><td>首版。0x0E 单点定标协议与流程，经实机收发验证（500 MΩ / 419.333 → c=0.788，应答 a=788 与理论值一致）</td></tr>
+</table>
+
+</body>
+</html>
