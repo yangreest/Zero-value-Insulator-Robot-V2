@@ -74,4 +74,6 @@ Testing/
 /测量图像
 *.pdf
 /截图
+*.png
+*.jpg
 
