@@ -558,7 +558,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 		case 1:
 		{
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("内上");
 			break;
@@ -573,7 +573,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 		case 3:
 		{
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("复原");
 			break;
@@ -588,7 +588,7 @@ void Insulator_Zero_Value_Detection_Robot::On_timerInput_timeout()
 		case 5: // 探针向外
 		{
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("外上");
 			break;
@@ -1990,7 +1990,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 	ShowMeasureWaitDialog(QStringLiteral("探针指向内测,等待到位..."));
 
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-		m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+		m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 
 	QTimer::singleShot(4000, this, [this]() {
@@ -2018,7 +2018,7 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 				m_pDeviceLog->Write("测量流程:单联内测结果已收到,探针复原,本次测量结束");
 			UpdateMeasureWaitDialog(QStringLiteral("探针复原中..."));
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 
 			m_nMeasureStep = 0;
@@ -2032,7 +2032,7 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 			m_pDeviceLog->Write("测量流程:内测结果已收到,探针切换到外侧");
 		UpdateMeasureWaitDialog(QStringLiteral("探针切换到外侧,等待到位..."));
 		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+			m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 		m_pComDevice->Write(cmds.data(), cmds.size());
 
 		QTimer::singleShot(4000, this, [this]() {
@@ -2052,7 +2052,7 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 			m_pDeviceLog->Write("测量流程:外侧结果已收到,探针复原,本次测量结束");
 		UpdateMeasureWaitDialog(QStringLiteral("探针复原中..."));
 		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+			m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 		m_pComDevice->Write(cmds.data(), cmds.size());
 
 		m_nMeasureStep = 0;
@@ -2147,7 +2147,7 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 			if (m_pDeviceLog)
 				m_pDeviceLog->Write("键盘控制:探针向内（内测）");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("内上");
 			return;
@@ -2157,7 +2157,7 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 			if (m_pDeviceLog)
 				m_pDeviceLog->Write("键盘控制:探针向外（外侧）");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("外上");
 			return;
@@ -2167,7 +2167,7 @@ void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 			if (m_pDeviceLog)
 				m_pDeviceLog->Write("键盘控制:探针复原");
 			auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+				m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 			m_pComDevice->Write(cmds.data(), cmds.size());
 			ui.label_29->setText("复原");
 			return;
@@ -2289,7 +2289,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 		SetMeasureUiEnabled(false);
 		ShowMeasureWaitDialog(QStringLiteral("重测:探针指向内测,等待到位..."));
 		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+			m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 		m_pComDevice->Write(cmds.data(), cmds.size());
 
 		QTimer::singleShot(4000, this, [this]() {
@@ -2319,7 +2319,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 		SetMeasureUiEnabled(false);
 		ShowMeasureWaitDialog(QStringLiteral("重测:探针指向内测,等待到位..."));
 		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+			m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 		m_pComDevice->Write(cmds.data(), cmds.size());
 
 		QTimer::singleShot(4000, this, [this]() {
@@ -2425,7 +2425,7 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle1_Click()
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("按钮操作:探针向内（内测）");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-		m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+		m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
@@ -2434,7 +2434,7 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle2_Click()
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("按钮操作:探针向外（外侧）");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-		m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+		m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
@@ -2443,7 +2443,7 @@ void Insulator_Zero_Value_Detection_Robot::On_neddle3_Click()
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("按钮操作:探针复原");
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-		m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 25);
+		m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 }
 
