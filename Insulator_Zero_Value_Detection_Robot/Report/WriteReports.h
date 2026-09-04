@@ -1,8 +1,11 @@
 #pragma once
 
 #include <string>
+#include <functional>
 #include <QHash>
 #include <QString>
+#include <QStringList>
+#include <QJsonObject>
 
 // ===== 环境配置 =====
 // qmake:  QT += core
@@ -37,6 +40,26 @@ public:
 		const std::string& strOutputPath,
 		const QHash<QString, QString>& mapData);
 
+	// 用双联测量数据填充报告"数据表"(document.xml 中第一张表)的片数数据行。
+	// 数据行按实际测量片数自适应：多于模板行则增行，少于则减行，无数据则清空数据行。
+	// mapTicketMearData 结构: { 侧别: { 相别: [内1,外1,内2,外2,...] } }
+	//   侧别: key 含"大号"→表左半(大号侧)，含"小号"→表右半(小号侧)
+	//   相别: key 含 'A'/'B'/'C' → 对应相列组
+	//   每相数组按[内侧,外侧]成对存放，第 n 片: 内侧(左列)=[2(n-1)]，外侧(右列)=[2(n-1)+1]
+	//   数据行数 = 六个相列数组的最大片数 = max(ceil(size/2))
+	// 数据表每数据行 14 单元格: [片号,大号A内,大号A外,大号B内,大号B外,大号C内,大号C外,
+	//                            片号,小号A内,小号A外,小号B内,小号B外,小号C内,小号C外]
+	static bool FillMearDataReport(
+		const QString& strTemplatePath,
+		const QString& strOutputPath,
+		const QJsonObject& mapTicketMearData);
+
+	// std::string 重载
+	static bool FillMearDataReport(
+		const std::string& strTemplatePath,
+		const std::string& strOutputPath,
+		const QJsonObject& mapTicketMearData);
+
 private:
 	// XML 文本转义（数据含 < > & 时 Word 才能正常显示）
 	static QString XmlEscape(const QString& strText);
@@ -46,4 +69,20 @@ private:
 
 	// 替换 word/document.xml 中的全部占位符
 	static QString FillPlaceholders(const QString& strXml, const QHash<QString, QString>& mapData);
+
+	// 读取模板 docx，对 word/document.xml 应用 fnTransform，其余部件原样复制后写出到 strOutputPath
+	static bool RewriteDocx(
+		const QString& strTemplatePath,
+		const QString& strOutputPath,
+		const std::function<QString(const QString&)>& fnTransform);
+
+	// 在 document.xml 第一张表中，用测量数据重建片数数据行（行数自适应）
+	static QString FillMearDataRows(const QString& strXml, const QJsonObject& mapData);
+
+	// 以 strRowTemplate 为样板生成一行数据行，cellValues 提供 14 个单元格文本
+	// （克隆时剥离 w14:paraId/textId，避免多行 ID 重复导致 Word 报"内容有问题"）
+	static QString BuildDataRow(const QString& strRowTemplate, const QStringList& cellValues);
+
+	// 将单元格 XML 内文本替换为 strValue（写入第一个 <w:t>，其余 <w:t> 清空）
+	static QString SetCellText(const QString& strCellXml, const QString& strValue);
 };
