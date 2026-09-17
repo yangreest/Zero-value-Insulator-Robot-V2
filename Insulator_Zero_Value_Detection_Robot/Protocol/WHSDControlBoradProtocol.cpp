@@ -110,6 +110,8 @@ CDeviceHeartBeat::CDeviceHeartBeat()
 	m_vectorSafetyMotorStatus.resize(MOTOR_COUNT);
 	m_vectorSBMotorStatus.resize(MOTOR_COUNT);
 	m_cBattery = 0;
+	// 总电源默认置0(关):首帧心跳到达前避免读到未初始化的不确定值,测量前置校验以"未知即关"为安全默认
+	m_cMainPowerSupply = 0;
 	m_cHardwareYear = 0;
 	m_cHardwareMonth = 0;
 	m_cHardwareDay = 0;

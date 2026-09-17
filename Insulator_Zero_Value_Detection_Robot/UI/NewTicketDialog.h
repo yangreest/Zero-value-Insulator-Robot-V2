@@ -21,6 +21,8 @@ signals:
 
 public:
 	void SetTicket(CNewTicketConfig strTicket);
+	// 新建工单前重置:清空全部输入与内部缓存的工单配置,避免残留上一个工单(尤其是历史检测数据)
+	void ResetForNew();
 private slots:
 	void on_buttonBox_accepted();
 	void on_buttonBox_rejected();

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: application_entry
+title: 绝缘子零值检测机器人 Qt 应用入口
+scope:
+    - Insulator_Zero_Value_Detection_Robot/main.cpp
+    - Insulator_Zero_Value_Detection_Robot/resource.h
+    - Insulator_Zero_Value_Detection_Robot/单点定标协议与流程_V1.0.html
+source_files: []
+depends_on: []
+related_to: []

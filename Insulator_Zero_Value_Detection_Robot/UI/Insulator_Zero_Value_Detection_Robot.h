@@ -96,6 +96,15 @@ private slots:
 	void On_WriteReport_Click();
 	void On_combobox_currentIndexChanged(int index);
 
+	// 探针到位轮询:每个周期判断是否收到到位信号或已超过兜底等待时间
+	void On_ProbeWaitTick();
+	// 测量结果超时:发出测量指令后在超时时间内未收到0x0F回报,判为失败并自动结束+告警
+	void On_MeasureTimeout();
+	// 总电源是否确认关闭:已收到过心跳且回报电源为关才视为关闭;心跳未到达时状态未知,不视为关闭
+	bool IsMainPowerConfirmedOff();
+	// 心跳数据加锁快照:协议回调线程持锁写入,UI线程读取同样需持锁,避免读到写一半的数据
+	CDeviceHeartBeat GetHeartBeatSnapshot();
+
 	// ===== X值单点定标（groupBox_3），步骤自上而下顺序执行 =====
 	// ① 恢复默认（0x17/0x05）：清空旧校准，测量通道直通
 	void On_CalibReset_Click();
@@ -122,6 +131,10 @@ public slots:
 	void On_ChangeTicketSignal(CNewTicketConfig strTicket);
     void On_NewReportSignal(CNewReportConfig strReport);
 	void On_ChangeReportSignal(CNewReportConfig strReport);
+
+	// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
+	// 置位后到位轮询会立即触发测量,无需等待兜底超时
+	void NotifyProbeArrived();
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;
@@ -172,6 +185,27 @@ private:
 	void UpdateMeasureWaitDialog(const QString& strText);
 	void HideMeasureWaitDialog();
 
+	// ===== 测量流程状态机（到位轮询 + 结果超时 + 异常自动结束）=====
+	// 下发探针移动指令并启动到位轮询:收到到位信号或超过兜底等待后触发一次测量
+	// cAngle:探针角度 bInsideCapture:到位后截图是否为内侧 nNextStep:本次测量对应步骤
+	// strWaitText:到位等待提示 strMeasureText:触发测量时的提示
+	void StartProbeMoveAndWait(quint8 cAngle, bool bInsideCapture, int nNextStep,
+		const QString& strWaitText, const QString& strMeasureText);
+	// 截图 + 发送测量指令 + 置步骤 + 启动结果超时定时器
+	void TriggerMeasureAndArm();
+	// 异常结束本次测量:探针复原、关闭等待窗、恢复按钮、清步骤并记录告警
+	void AbortMeasure(const QString& strReason);
+
+	// ===== 告警面板 =====
+	// 在告警表(tableWidget)首行插入一条告警(时间/类型/位置/详情/状态),仅UI线程调用
+	void AddAlarm(const QString& strType, const QString& strLocation, const QString& strDetail);
+
+	// ===== 工单表维护 =====
+	// 重排工单表序号列(第0列文本),用于新增/删除后保持序号连续
+	void RenumberTicketTable();
+	// 刷新工单表中当前工单行的开始/结束时间列(第7/8列)
+	void RefreshCurrentTicketTimeColumns();
+
 protected:
 	// 拦截等待弹窗的Esc/关闭事件，保证测量结束前不可关闭
 	bool eventFilter(QObject* obj, QEvent* event) override;
@@ -208,9 +242,9 @@ private:
 
 	CCFRD_Time m_time_LastHeartBeatTime;
 
-	uint64_t m_nHeartBeatCount;
-
-	bool m_bControlBroadConnected;
+	uint64_t m_nHeartBeatCount = 0;
+	
+	bool m_bControlBroadConnected = false;
 
 	std::mutex m_mutexXInput;
 
@@ -263,6 +297,20 @@ private:
 	// 测量等待弹窗及其提示文本（懒创建，复用）
 	QDialog* m_pMeasureWaitDialog = nullptr;
 	QLabel* m_pMeasureWaitLabel = nullptr;
+
+	// ===== 测量流程状态机成员 =====
+	// 探针到位轮询定时器（周期触发，判断到位信号或兜底超时）
+	QTimer* m_pProbeWaitTimer = nullptr;
+	// 测量结果超时定时器（单次，发出测量指令后启动）
+	QTimer* m_pMeasureTimeoutTimer = nullptr;
+	// 本轮到位等待的起始时刻，用于计算兜底超时
+	QDateTime m_probeWaitStart;
+	// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
+	std::atomic<bool> m_bProbeArrived{ false };
+	// 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
+	bool m_bPendingInsideCapture = true;
+	int m_nPendingStep = 1;
+	QString m_strPendingMeasureText;
 
 	// ===== X值单点定标流程状态 =====
 	// 步骤自上而下顺序执行，每步发出命令后进入等待态，靠信号槽收结果推进

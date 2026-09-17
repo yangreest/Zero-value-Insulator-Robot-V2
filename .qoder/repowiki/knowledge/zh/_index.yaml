@@ -1,0 +1,32 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-09-17T08:31:03Z"
+modules:
+    "":
+        dir_name: 绝缘子零值检测机器人 V2 解决方案
+        title: 绝缘子零值检测机器人 V2 解决方案
+        scope:
+            - README.md
+            - .gitignore
+            - Insulator_Zero_Value_Detection_Robot.sln
+            - LICENSE
+            - 操作说明书.md
+        source_files: []
+        children:
+            - application_entry
+        depends_on: []
+        related_to: []
+    application_entry:
+        dir_name: 绝缘子零值检测机器人 Qt 应用入口
+        title: 绝缘子零值检测机器人 Qt 应用入口
+        scope:
+            - Insulator_Zero_Value_Detection_Robot/main.cpp
+            - Insulator_Zero_Value_Detection_Robot/resource.h
+            - Insulator_Zero_Value_Detection_Robot/单点定标协议与流程_V1.0.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

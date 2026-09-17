@@ -10,9 +10,13 @@ NewTicketDialog::NewTicketDialog(QWidget* parent)
 	// 界面置于最前
     setWindowFlags(Qt::WindowStaysOnTopHint);
 
-	// 开始/结束时间默认当前时间，并保证结束时间不早于开始时间
+	// 开始/结束时间为检测任务真实起止时间,由检测流程自动打点,不允许手动编辑
 	ui.dateTimeEdit->setDateTime(QDateTime::currentDateTime());
 	ui.dateTimeEdit_2->setDateTime(QDateTime::currentDateTime());
+	ui.dateTimeEdit->setReadOnly(true);
+	ui.dateTimeEdit_2->setReadOnly(true);
+	ui.dateTimeEdit->setEnabled(false);
+	ui.dateTimeEdit_2->setEnabled(false);
 
 	connect(ui.pushButton, &QPushButton::clicked, this, &NewTicketDialog::on_buttonBox_accepted);
 	connect(ui.pushButton_2, &QPushButton::clicked, this, &NewTicketDialog::on_buttonBox_rejected);
@@ -49,8 +53,7 @@ void NewTicketDialog::on_buttonBox_accepted()
 	m_memNewTicketConfig.m_strDetectionUnit = ui.lineEdit_4->text().toStdString();
 	m_memNewTicketConfig.m_strRemark = ui.lineEdit_5->text().toStdString();
 	m_memNewTicketConfig.m_eCurrentType = (CNewTicketConfig::CurrentType)ui.comboBox_3->currentIndex();
-	m_memNewTicketConfig.m_strStartTime = ui.dateTimeEdit->dateTime().toString("yyyy-MM-dd HH:mm").toStdString();
-	m_memNewTicketConfig.m_strEndTime = ui.dateTimeEdit_2->dateTime().toString("yyyy-MM-dd HH:mm").toStdString();
+	// 开始/结束时间为检测真实起止,由检测流程自动打点,此处保留 m_strTicket 中已有值,不从控件写入
 	m_memNewTicketConfig.m_strDetectionPerson = ui.lineEdit_6->text().toStdString();
 	if (m_bIsNewTicket)
 		emit NewTicketSignal(m_memNewTicketConfig);
@@ -78,6 +81,27 @@ void NewTicketDialog::SetTicket(CNewTicketConfig strTicket)
 	ui.lineEdit_6->setText(QString::fromStdString(strTicket.m_strDetectionPerson));
 
 	m_bIsNewTicket = false;
+}
+
+void NewTicketDialog::ResetForNew()
+{
+	// 清空内部缓存的工单配置(含历史测量数据),恢复为新建态
+	m_strTicket = CNewTicketConfig();
+	m_bIsNewTicket = true;
+
+	// 清空全部输入框并复位下拉框
+	ui.lineEdit->clear();
+	ui.lineEdit_2->clear();
+	ui.lineEdit_3->clear();
+	ui.lineEdit_4->clear();
+	ui.lineEdit_5->clear();
+	ui.lineEdit_6->clear();
+	ui.comboBox->setCurrentIndex(0);
+	ui.comboBox_2->setCurrentIndex(0);
+	ui.comboBox_3->setCurrentIndex(0);
+	// 起止时间只读,新建时尚未开始检测,置当前时间仅作占位显示
+	ui.dateTimeEdit->setDateTime(QDateTime::currentDateTime());
+	ui.dateTimeEdit_2->setDateTime(QDateTime::currentDateTime());
 }
 
 void NewTicketDialog::on_buttonBox_rejected()

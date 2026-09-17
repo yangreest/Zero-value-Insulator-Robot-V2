@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: ""
+title: 绝缘子零值检测机器人 V2 解决方案
+scope:
+    - README.md
+    - .gitignore
+    - Insulator_Zero_Value_Detection_Robot.sln
+    - LICENSE
+    - 操作说明书.md
+source_files: []
+depends_on: []
+related_to: []

@@ -11,6 +11,7 @@
 #include <QRegularExpressionValidator>
 #include <QDoubleValidator>
 #include <QScrollBar>
+#include <QHeaderView>
 #include <cmath>
 #include <QDateTime>
 #include <QFileDialog.h>
@@ -62,6 +63,14 @@ static const int CALIB_CMD_TIMEOUT_MS = 3000;
 static const int CALIB_MEASURE_COUNT = 3;
 // 两次测量之间的间隔，给模块读数稳定的时间
 static const int CALIB_MEASURE_INTERVAL_MS = 800;
+
+// ===== 测量流程时序参数（到位轮询 + 结果超时）=====
+// 探针到位轮询周期
+static const int PROBE_ARRIVE_POLL_MS = 100;
+// 探针到位兜底等待:协议未提供到位信号前的最大等待，收到到位信号可提前触发
+static const int PROBE_ARRIVE_TIMEOUT_MS = 4000;
+// 测量结果超时:0x0F约3.2秒回报，超时未收到判为测量失败(无返回值)
+static const int MEASURE_RESULT_TIMEOUT_MS = 8000;
 
 // 把待发送帧转成HEX文本，便于与协议文档的示例帧逐字节比对
 static QString CalibFrameToHex(const std::vector<uint8_t>& vecData)
@@ -148,6 +157,10 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 			label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
 		}
 	}
+
+	// 清除告警表.ui中的占位行("324"),告警由AddAlarm在运行时动态填充;表头拉伸铺满（问题3）
+	ui.tableWidget->setRowCount(0);
+	ui.tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
 	for (auto& strNewTicketConfig : m_pConfig->m_vecNewTicketConfig)
 	{
@@ -401,17 +414,18 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 {
 	if (m_nTimeCount++ % 10 == 0)
 	{
+		// 每1秒轮询一次检测模块状态/电量/结果，保证设备状态实时刷新(之前被注释导致状态恒为待机)
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 2, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 3, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 4, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 	}
 
 	ui.label_34->setText(QString::number(m_nHeartBeatCount));
 	ui.label_3->setText(m_bControlBroadConnected ? "已连接" : "未连接");
-	const auto memDeviceHeartBeat = m_memDeviceHeartBeat;
+	const auto memDeviceHeartBeat = GetHeartBeatSnapshot();
 	std::string strWalkingMotorStatus("未知");
 	switch (memDeviceHeartBeat.m_vectorWalkingMotorStatus.front().m_cDeviceStatus)
 	{
@@ -491,7 +505,8 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	{
 	case 0:
 	{
-		ui.label_17->setText("待机");
+		// 检测流程进行中时优先显示"检测中",保证触发瞬间即刷新,不必等下一次轮询
+		ui.label_17->setText(m_nMeasureStep != 0 ? "检测中" : "待机");
 		break;
 	}
 	case 1:
@@ -696,24 +711,38 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 	QString strDira = ui.comboBox->currentText();
 	AppendMearData(m_mapTicketMearData, strSide, strDira, value);
 
-	// 将测量数据同步到当前工单配置并直接保存到XML文件
+	// 起止时间自动打点（问题1.3）:首次记录到测量值时置开始时间,之后每次刷新结束时间
+	QString strNow = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
+	if (m_CurrentTicketConfig.m_strStartTime.empty())
+		m_CurrentTicketConfig.m_strStartTime = strNow.toStdString();
+	m_CurrentTicketConfig.m_strEndTime = strNow.toStdString();
+
+	// 将测量数据与起止时间同步到当前工单配置并直接保存到XML文件（单次落盘）
 	m_CurrentTicketConfig.m_mapTicketMearData = m_mapTicketMearData;
 	for (auto& ticket : m_pConfig->m_vecNewTicketConfig)
 	{
 		if (ticket.m_strTicketId == m_CurrentTicketConfig.m_strTicketId)
 		{
 			ticket.m_mapTicketMearData = m_mapTicketMearData;
+			ticket.m_strStartTime = m_CurrentTicketConfig.m_strStartTime;
+			ticket.m_strEndTime = m_CurrentTicketConfig.m_strEndTime;
 			break;
 		}
 	}
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+
+	// 刷新工单列表该行的开始/结束时间显示（第7/8列,切到UI线程执行）
+	QMetaObject::invokeMethod(this, [this]() {
+		RefreshCurrentTicketTimeColumns();
+		}, Qt::QueuedConnection);
 
 	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
 	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 
 	// 每获得一个测量值,填充到表格对应列的空单元格并绘制曲线（回调在协议线程,切到UI线程执行）
 	// 双联时每相拆为两列:奇数次测量为内侧,偶数次为外侧
-	QString strHeader = strDira;
+	// 表头统一加入侧别维度,与建表列头/复测删除保持一致（问题2.1）
+	QString strHeader = strSide + " " + strDira;
 	if (visible)
 		strHeader += (vecData.size() % 2 == 1) ? QStringLiteral("内侧") : QStringLiteral("外侧");
 	ModelDataWidget* pModelDataWidget = m_pModelDataWidget;
@@ -722,6 +751,20 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 		if (pModelDataWidget)
 			pModelDataWidget->appendValue(strHeader, dValue);
 		}, Qt::QueuedConnection);
+
+	// 零值/低值告警（问题3）:阻值低于阈值时记录告警,片号取该侧别相别当前序号（切到UI线程）
+	uint16_t wThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
+	if (value < wThreshold)
+	{
+		int nSliceNo = visible
+			? ((vecData.size() % 2 == 1) ? static_cast<int>(vecData.size() / 2 + 1) : static_cast<int>(vecData.size() / 2))
+			: static_cast<int>(vecData.size());
+		QString strLocation = strSide + " " + strDira + QStringLiteral(" 第%1片").arg(nSliceNo);
+		QString strDetail = QStringLiteral("阻值 %1 MΩ 低于阈值 %2 MΩ").arg(static_cast<double>(value), 0, 'f', 3).arg(wThreshold);
+		QMetaObject::invokeMethod(this, [this, strLocation, strDetail]() {
+			AddAlarm(QStringLiteral("零值/低值"), strLocation, strDetail);
+			}, Qt::QueuedConnection);
+	}
 
 	if (visible) // 双联
 	{
@@ -1496,6 +1539,19 @@ void Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat(const CDevic
 	m_mutexDeviceInfoLock.unlock();
 }
 
+bool Insulator_Zero_Value_Detection_Robot::IsMainPowerConfirmedOff()
+{
+	std::lock_guard<std::mutex> lock(m_mutexDeviceInfoLock);
+	// 未收到任何心跳时电源状态未知,不视为已关闭(未知不阻断测量,由探针/结果超时兑底)
+	return m_nHeartBeatCount > 0 && m_memDeviceHeartBeat.m_cMainPowerSupply <= 0;
+}
+
+CDeviceHeartBeat Insulator_Zero_Value_Detection_Robot::GetHeartBeatSnapshot()
+{
+	std::lock_guard<std::mutex> lock(m_mutexDeviceInfoLock);
+	return m_memDeviceHeartBeat;
+}
+
 
 void Insulator_Zero_Value_Detection_Robot::On_TurnOnAll_Click(bool bState)
 {
@@ -1774,6 +1830,8 @@ void Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click()
 {
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("打开新建工单对话框");
+	// 新建前重置对话框,清除上一个工单(尤其是"修改"过的工单)残留的输入与历史检测数据（问题1.1）
+	newTicketDialog->ResetForNew();
 	newTicketDialog->show();
 }
 
@@ -1841,6 +1899,8 @@ void Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click()
 				}
 			}
 			m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+			// 删除后重排序号,保持第0列序号连续（问题1.2）
+			RenumberTicketTable();
 		}
 	}
 }
@@ -1895,22 +1955,24 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 
 	On_combobox_currentIndexChanged(0);
 
-	// 表格列随comboBox的item,行随片数；双联时每相拆为内侧/外侧两列,每相各占一片数的行
+	// 表格列:外层遍历侧别(comboBox_2:大号测/小号侧),内层遍历相别;双联再拆内侧/外侧
+	// 列头格式:侧别 + " " + 相别 [+ 内侧/外侧],与测量回填/复测删除保持一致（问题2.1）
 	QStringList tableHeaders;
 	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
-	if (bDouble)
+	for (int i = 0; i < ui.comboBox_2->count(); ++i)
 	{
+		const QString strSide = ui.comboBox_2->itemText(i);
 		for (const QString& strPhase : phaseList)
-			tableHeaders << strPhase + QStringLiteral("内侧") << strPhase + QStringLiteral("外侧");
-	}
-	else
-	{
-		tableHeaders = phaseList;
+		{
+			if (bDouble)
+				tableHeaders << strSide + " " + strPhase + QStringLiteral("内侧") << strSide + " " + strPhase + QStringLiteral("外侧");
+			else
+				tableHeaders << strSide + " " + strPhase;
+		}
 	}
 	if (m_pModelDataWidget)
 	{
 		m_pModelDataWidget->setTableLayout(tableHeaders, m_CurrentTicketConfig.m_wInsulatorSliceNum);
-		bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 		for (auto itSide = m_CurrentTicketConfig.m_mapTicketMearData.constBegin(); itSide != m_CurrentTicketConfig.m_mapTicketMearData.constEnd(); ++itSide)
 		{
 			QJsonObject objDira = itSide.value().toObject();
@@ -1920,7 +1982,8 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 				const QJsonArray vecData = itDira.value().toArray();
 				for (int i = 0; i < vecData.size(); ++i)
 				{
-					QString strHeader = strDira;
+					// 历史数据回填:表头同样加侧别前缀,与新列头一致（问题2.1）
+					QString strHeader = itSide.key() + " " + strDira;
 					if (bDouble)
 						strHeader += (i % 2 == 0) ? QStringLiteral("内侧") : QStringLiteral("外侧");
 					m_pModelDataWidget->appendValue(strHeader, vecData[i].toDouble());
@@ -1971,41 +2034,160 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 		QMessageBox::information(this, "提示", "请加载一个工单");
 		return;
 	}
-	// 上一次测量流程未结束,忽略重复触发（兼顾手柄等外部触发）
-	if (m_nMeasureStep != 0)
+	// 上一次测量流程未结束(含探针到位等待中),忽略重复触发（兼顾手柄等外部触发）
+	if (m_nMeasureStep != 0 || (m_pProbeWaitTimer != nullptr && m_pProbeWaitTimer->isActive()))
 		return;
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
 	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
-	if (vecData.size() >= m_CurrentTicketConfig.m_wInsulatorSliceNum)
+	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	// 双联每片含内/外侧两个值,上限为2×片数;单联上限为片数
+	int nMaxCount = bDouble ? (2 * m_CurrentTicketConfig.m_wInsulatorSliceNum) : m_CurrentTicketConfig.m_wInsulatorSliceNum;
+	if (vecData.size() >= nMaxCount)
 	{
 		QMessageBox::information(this, "提示", "请 换相 或换 号侧 ！");
 		return;
 	}
 
-	// 第一步:探针指向内测,按钮禁用并弹出不可关闭的等待窗,等待4s到位后执行第一次测量
+	// 前置校验:控制板未连接或已确认总电源关闭时不进入流程,避免卡在等待弹窗（问题6）
+	// 电源判定与到位轮询保持一致:心跳未到达时状态未知不阻断,由探针/结果超时兑底
+	if (!m_bControlBroadConnected || IsMainPowerConfirmedOff())
+	{
+		QString strReason = !m_bControlBroadConnected ? QStringLiteral("控制板未连接") : QStringLiteral("总电源未开启");
+		AddAlarm(QStringLiteral("测量异常"), strSide + " " + strDira, strReason + QStringLiteral("，无法开始检测"));
+		QMessageBox::warning(this, "提示", strReason + QStringLiteral("，无法开始检测"));
+		return;
+	}
+
+	// 第一步:探针指向内测,按钮禁用并弹出不可关闭的等待窗,到位后执行第一次测量
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("开始测量:侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString());
 	SetMeasureUiEnabled(false);
 	ShowMeasureWaitDialog(QStringLiteral("探针指向内测,等待到位..."));
+	// 探针指向内测,启动到位轮询:收到到位信号或超过兜底等待后触发第一次测量
+	StartProbeMoveAndWait(m_pConfig->m_memControlBoardConfig.m_cUpAngle, true, 1,
+		QStringLiteral("探针指向内测,等待到位..."),
+		QStringLiteral("正在执行第一次测量（内测）,等待结果..."));
+}
 
+void Insulator_Zero_Value_Detection_Robot::StartProbeMoveAndWait(quint8 cAngle, bool bInsideCapture, int nNextStep,
+	const QString& strWaitText, const QString& strMeasureText)
+{
+	// 记录到位后待执行测量的参数
+	m_bPendingInsideCapture = bInsideCapture;
+	m_nPendingStep = nNextStep;
+	m_strPendingMeasureText = strMeasureText;
+
+	// 下发探针移动指令
 	auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-		m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
+		cAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 	m_pComDevice->Write(cmds.data(), cmds.size());
 
-	QTimer::singleShot(4000, this, [this]() {
-		UpdateMeasureWaitDialog(QStringLiteral("正在执行第一次测量（内测）,等待结果..."));
-		captureCurrentWindow(true);	// 到位后先截图保存（内测）,再执行第一次测量
-		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+	UpdateMeasureWaitDialog(strWaitText);
+
+	// 启动到位轮询:每周期判断到位信号或兜底超时
+	m_bProbeArrived = false;
+	m_probeWaitStart = QDateTime::currentDateTime();
+	if (m_pProbeWaitTimer == nullptr)
+	{
+		m_pProbeWaitTimer = new QTimer(this);
+		connect(m_pProbeWaitTimer, &QTimer::timeout, this, &Insulator_Zero_Value_Detection_Robot::On_ProbeWaitTick);
+	}
+	m_pProbeWaitTimer->start(PROBE_ARRIVE_POLL_MS);
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_ProbeWaitTick()
+{
+	if (m_pProbeWaitTimer == nullptr)
+		return;
+	// 等待期间断连/已确认关电源:自动结束并告警（问题6）;心跳未到达时电源未知,不误判导致弹窗闪退
+	if (!m_bControlBroadConnected || IsMainPowerConfirmedOff())
+	{
+		m_pProbeWaitTimer->stop();
+		QString strReason = !m_bControlBroadConnected ? QStringLiteral("控制板已断开") : QStringLiteral("总电源已关闭");
+		AbortMeasure(strReason);
+		return;
+	}
+	// 收到下位机到位信号立即触发测量（问题7,提升效率）;否则超过兜底等待时间按现状触发
+	bool bArrived = m_bProbeArrived.load();
+	qint64 nElapsed = m_probeWaitStart.msecsTo(QDateTime::currentDateTime());
+	if (bArrived || nElapsed >= PROBE_ARRIVE_TIMEOUT_MS)
+	{
+		m_pProbeWaitTimer->stop();
+		TriggerMeasureAndArm();
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::TriggerMeasureAndArm()
+{
+	UpdateMeasureWaitDialog(m_strPendingMeasureText);
+	captureCurrentWindow(m_bPendingInsideCapture);	// 到位后先截图保存,再执行测量
+	auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
+	m_pComDevice->Write(cmds.data(), cmds.size());
+	m_nMeasureStep = m_nPendingStep;
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("测量流程:发送第%d步测量指令", m_nPendingStep);
+
+	// 启动结果超时:超时未收到0x0F判为无返回值,自动结束并告警（问题6）
+	if (m_pMeasureTimeoutTimer == nullptr)
+	{
+		m_pMeasureTimeoutTimer = new QTimer(this);
+		m_pMeasureTimeoutTimer->setSingleShot(true);
+		connect(m_pMeasureTimeoutTimer, &QTimer::timeout, this, &Insulator_Zero_Value_Detection_Robot::On_MeasureTimeout);
+	}
+	m_pMeasureTimeoutTimer->start(MEASURE_RESULT_TIMEOUT_MS);
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_MeasureTimeout()
+{
+	// 已回到空闲态(结果已处理)则忽略
+	if (m_nMeasureStep == 0)
+		return;
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("测量流程:结果超时,检测模块无返回值,自动结束本次测量");
+	AbortMeasure(QStringLiteral("检测模块无返回值/测量超时"));
+}
+
+void Insulator_Zero_Value_Detection_Robot::AbortMeasure(const QString& strReason)
+{
+	// 停止所有测量相关定时器
+	if (m_pProbeWaitTimer != nullptr)
+		m_pProbeWaitTimer->stop();
+	if (m_pMeasureTimeoutTimer != nullptr)
+		m_pMeasureTimeoutTimer->stop();
+
+	QString strSide = ui.comboBox_2->currentText();
+	QString strDira = ui.comboBox->currentText();
+
+	// 探针复原(连接正常且电源未确认关闭时下发;电源未知时照发,无电源设备不会动作)
+	if (m_bControlBroadConnected && !IsMainPowerConfirmedOff())
+	{
+		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
+			m_pConfig->m_memControlBoardConfig.m_cDownAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
 		m_pComDevice->Write(cmds.data(), cmds.size());
-		m_nMeasureStep = 1;
-		if (m_pDeviceLog)
-			m_pDeviceLog->Write("测量流程:发送第一次测量指令（内测）");
-		});
+	}
+
+	m_nMeasureStep = 0;
+	HideMeasureWaitDialog();
+	SetMeasureUiEnabled(true);
+
+	// 记录告警（问题3/6）
+	AddAlarm(QStringLiteral("测量异常"), strSide + " " + strDira, strReason);
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("测量异常自动结束:" + strReason.toStdString());
+}
+
+void Insulator_Zero_Value_Detection_Robot::NotifyProbeArrived()
+{
+	// 预留:下位机到位信号到达时置位,到位轮询会立即触发测量（问题7）
+	m_bProbeArrived = true;
 }
 
 void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 {
+	// 收到测量结果,取消本次结果超时计时（问题6）
+	if (m_pMeasureTimeoutTimer != nullptr)
+		m_pMeasureTimeoutTimer->stop();
 	if(m_pDeviceLog)
 		m_pDeviceLog->Write("测量结果:第" + std::to_string(nStep) + "步");
 	if (nStep == 1)
@@ -2027,23 +2209,12 @@ void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 			return;
 		}
 
-		// 双联:第一次（内测）结果已收到:探针打到外侧,等待4s到位后执行第二次测量
+		// 双联:第一次（内测）结果已收到:探针打到外侧,到位后执行第二次测量
 		if (m_pDeviceLog)
 			m_pDeviceLog->Write("测量流程:内测结果已收到,探针切换到外侧");
-		UpdateMeasureWaitDialog(QStringLiteral("探针切换到外侧,等待到位..."));
-		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cUpAngle2, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
-		m_pComDevice->Write(cmds.data(), cmds.size());
-
-		QTimer::singleShot(4000, this, [this]() {
-			UpdateMeasureWaitDialog(QStringLiteral("正在执行第二次测量（外侧）,等待结果..."));
-			captureCurrentWindow(false);	// 到位后先截图保存（外侧）,再执行第二次测量
-			auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
-			m_pComDevice->Write(cmds.data(), cmds.size());
-			m_nMeasureStep = 2;
-			if (m_pDeviceLog)
-				m_pDeviceLog->Write("测量流程:发送第二次测量指令（外侧）");
-			});
+		StartProbeMoveAndWait(m_pConfig->m_memControlBoardConfig.m_cUpAngle2, false, 2,
+			QStringLiteral("探针切换到外侧,等待到位..."),
+			QStringLiteral("正在执行第二次测量（外侧）,等待结果..."));
 	}
 	else if (nStep == 2)
 	{
@@ -2253,14 +2424,23 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 		QMessageBox::information(this, "提示", "请加载一个工单");
 		return;
 	}
-	// 上一次测量/重测流程未结束,忽略重复触发（兼顾手柄等外部触发）
-	if (m_nMeasureStep != 0)
+	// 上一次测量/重测流程未结束(含探针到位等待中),忽略重复触发（兼顾手柄等外部触发）
+	if (m_nMeasureStep != 0 || (m_pProbeWaitTimer != nullptr && m_pProbeWaitTimer->isActive()))
 		return;
 
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
 	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
 	if (vecData.isEmpty())return;
+
+	// 前置校验:控制板未连接或已确认总电源关闭时不进入流程,避免卡在等待弹窗（问题6）
+	if (!m_bControlBroadConnected || IsMainPowerConfirmedOff())
+	{
+		QString strReason = !m_bControlBroadConnected ? QStringLiteral("控制板未连接") : QStringLiteral("总电源未开启");
+		AddAlarm(QStringLiteral("测量异常"), strSide + " " + strDira, strReason + QStringLiteral("，无法重测"));
+		QMessageBox::warning(this, "提示", strReason + QStringLiteral("，无法重测"));
+		return;
+	}
 
 	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 
@@ -2273,34 +2453,24 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 			m_pDeviceLog->Write(std::string("重测（双联）:删除最近") + (bRemoveOutside ? "一对内/外侧测量值" : "一个内侧测量值")
 				+ ",侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString() + ",重测内外侧各一次");
 
-		// 同步删除表格/曲线中最近的内/外侧测量值,等待复测值回填
+		// 同步删除表格/曲线中最近的内/外侧测量值,等待复测值回填（表头含侧别前缀）
 		if (m_pModelDataWidget)
 		{
-			m_pModelDataWidget->removeLastValue(strDira + QStringLiteral("内侧"));
+			m_pModelDataWidget->removeLastValue(strSide + " " + strDira + QStringLiteral("内侧"));
 			if (bRemoveOutside)
-				m_pModelDataWidget->removeLastValue(strDira + QStringLiteral("外侧"));
+				m_pModelDataWidget->removeLastValue(strSide + " " + strDira + QStringLiteral("外侧"));
 		}
 		for (int i = 0; i < (bRemoveOutside ? 2 : 1) && !vecData.isEmpty(); i++)
 			vecData.removeLast();
 		// 回写删除后的测量值数组
 		SetMearDataArray(m_mapTicketMearData, strSide, strDira, vecData);
 
-		// 重新执行完整双联测量流程:探针指向内测,等待4s到位后执行第一次测量,后续由OnMeasureResult推进
+		// 重新执行完整双联测量流程:探针指向内测,到位后执行第一次测量,后续由OnMeasureResult推进
 		SetMeasureUiEnabled(false);
 		ShowMeasureWaitDialog(QStringLiteral("重测:探针指向内测,等待到位..."));
-		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
-		m_pComDevice->Write(cmds.data(), cmds.size());
-
-		QTimer::singleShot(4000, this, [this]() {
-			UpdateMeasureWaitDialog(QStringLiteral("正在执行重测第一次测量（内测）,等待结果..."));
-			captureCurrentWindow(true);	// 到位后先截图保存（内测）,再执行第一次测量
-			auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
-			m_pComDevice->Write(cmds.data(), cmds.size());
-			m_nMeasureStep = 1;
-			if (m_pDeviceLog)
-				m_pDeviceLog->Write("测量流程:发送重测第一次测量指令（内测）");
-			});
+		StartProbeMoveAndWait(m_pConfig->m_memControlBoardConfig.m_cUpAngle, true, 1,
+			QStringLiteral("重测:探针指向内测,等待到位..."),
+			QStringLiteral("正在执行重测第一次测量（内测）,等待结果..."));
 	}
 	else
 	{
@@ -2308,29 +2478,19 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 		if (m_pDeviceLog)
 			m_pDeviceLog->Write("重测（单联）:删除最近一个测量值,侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString() + ",重测一次（内测）");
 
-		// 同步删除表格/曲线中最近一个测量值,等待复测值回填（单联表头无内/外侧后缀）
+		// 同步删除表格/曲线中最近一个测量值,等待复测值回填（表头含侧别前缀,单联无内/外侧后缀）
 		if (m_pModelDataWidget)
-			m_pModelDataWidget->removeLastValue(strDira);
+			m_pModelDataWidget->removeLastValue(strSide + " " + strDira);
 		vecData.removeLast();
 		// 回写删除后的测量值数组
 		SetMearDataArray(m_mapTicketMearData, strSide, strDira, vecData);
 
-		// 探针指向内测,等待4s到位后执行一次测量,后续由OnMeasureResult推进（单联收到结果即结束）
+		// 探针指向内测,到位后执行一次测量,后续由OnMeasureResult推进（单联收到结果即结束）
 		SetMeasureUiEnabled(false);
 		ShowMeasureWaitDialog(QStringLiteral("重测:探针指向内测,等待到位..."));
-		auto cmds = CWHSDControlBoardProtocol::DeviceRun(0x05, 0b11, 0x01,
-			m_pConfig->m_memControlBoardConfig.m_cUpAngle, (m_pConfig->m_memControlBoardConfig.m_cServoSpeed + 1) * 15);
-		m_pComDevice->Write(cmds.data(), cmds.size());
-
-		QTimer::singleShot(4000, this, [this]() {
-			UpdateMeasureWaitDialog(QStringLiteral("正在执行重测测量（内测）,等待结果..."));
-			captureCurrentWindow(true);	// 到位后先截图保存（内测）,再执行重测测量
-			auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 1, 0);
-			m_pComDevice->Write(cmds.data(), cmds.size());
-			m_nMeasureStep = 1;
-			if (m_pDeviceLog)
-				m_pDeviceLog->Write("测量流程:发送重测测量指令（内测）");
-			});
+		StartProbeMoveAndWait(m_pConfig->m_memControlBoardConfig.m_cUpAngle, true, 1,
+			QStringLiteral("重测:探针指向内测,等待到位..."),
+			QStringLiteral("正在执行重测测量（内测）,等待结果..."));
 	}
 }
 
@@ -2687,15 +2847,20 @@ void Insulator_Zero_Value_Detection_Robot::On_ChangeReportSignal(CNewReportConfi
 void Insulator_Zero_Value_Detection_Robot::On_NewTicketSignal(CNewTicketConfig config)
 {
 	config.m_strTicketId = GenerateUniqueTicketId();  // 设置唯一 ID
+	// 新建工单不携带任何历史检测数据/报告标记/起止时间,起止时间在检测时自动打点（问题1.1/1.3）
+	config.m_mapTicketMearData = QJsonObject();
+	config.m_bGenerateReport = false;
+	config.m_strStartTime.clear();
+	config.m_strEndTime.clear();
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("新增工单:" + config.m_strTicketId + " " + config.m_strLineName + "_" + config.m_strPoleNumber);
-	// 在tableWidget_2中新增一行
-	int rowCount = ui.tableWidget_2->rowCount();
-	ui.tableWidget_2->insertRow(rowCount);
-	SetTicketRow(rowCount, config);
+	// 新建工单插入到列表最前(第0行),并重排序号（问题1.2）
+	ui.tableWidget_2->insertRow(0);
+	SetTicketRow(0, config);
+	RenumberTicketTable();
 	FilterTicketTable();
 
-	m_pConfig->m_vecNewTicketConfig.push_back(config);
+	m_pConfig->m_vecNewTicketConfig.insert(m_pConfig->m_vecNewTicketConfig.begin(), config);
 	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
 	return;
 }
@@ -2771,6 +2936,51 @@ void Insulator_Zero_Value_Detection_Robot::SetTicketRow(int row, const CNewTicke
 	ui.tableWidget_2->setItem(row, 7, new QTableWidgetItem(QString::fromStdString(ticket.m_strStartTime)));
 	ui.tableWidget_2->setItem(row, 8, new QTableWidgetItem(QString::fromStdString(ticket.m_strEndTime)));
 	ui.tableWidget_2->setItem(row, 9, new QTableWidgetItem(QString::fromStdString(ticket.m_strDetectionPerson)));
+}
+
+void Insulator_Zero_Value_Detection_Robot::RenumberTicketTable()
+{
+	// 仅更新第0列"序号"文本为row+1,不重建item,避免丢失存于第0列的UserRole工单数据（问题1.2）
+	for (int row = 0; row < ui.tableWidget_2->rowCount(); ++row)
+	{
+		QTableWidgetItem* pItem = ui.tableWidget_2->item(row, 0);
+		if (pItem != nullptr)
+			pItem->setText(QString::number(row + 1));
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::RefreshCurrentTicketTimeColumns()
+{
+	// 定位当前工单所在行,刷新第7列(开始时间)、第8列(结束时间)显示（问题1.3）
+	if (m_CurrentTicketConfig.m_strTicketId.empty())
+		return;
+	for (int row = 0; row < ui.tableWidget_2->rowCount(); ++row)
+	{
+		QTableWidgetItem* pItem = ui.tableWidget_2->item(row, 0);
+		if (pItem == nullptr)
+			continue;
+		if (pItem->data(Qt::UserRole).value<CNewTicketConfig>().m_strTicketId == m_CurrentTicketConfig.m_strTicketId)
+		{
+			if (ui.tableWidget_2->item(row, 7) != nullptr)
+				ui.tableWidget_2->item(row, 7)->setText(QString::fromStdString(m_CurrentTicketConfig.m_strStartTime));
+			if (ui.tableWidget_2->item(row, 8) != nullptr)
+				ui.tableWidget_2->item(row, 8)->setText(QString::fromStdString(m_CurrentTicketConfig.m_strEndTime));
+			break;
+		}
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::AddAlarm(const QString& strType, const QString& strLocation, const QString& strDetail)
+{
+	// 告警表(tab_2内tableWidget,列:时间/类型/位置/详情/状态),最新告警插入第0行置顶（问题3）
+	ui.tableWidget->insertRow(0);
+	ui.tableWidget->setItem(0, 0, new QTableWidgetItem(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")));
+	ui.tableWidget->setItem(0, 1, new QTableWidgetItem(strType));
+	ui.tableWidget->setItem(0, 2, new QTableWidgetItem(strLocation));
+	ui.tableWidget->setItem(0, 3, new QTableWidgetItem(strDetail));
+	ui.tableWidget->setItem(0, 4, new QTableWidgetItem(QStringLiteral("未处理")));
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("告警:" + strType.toStdString() + " " + strLocation.toStdString() + " " + strDetail.toStdString());
 }
 
 void Insulator_Zero_Value_Detection_Robot::FilterTicketTable()
