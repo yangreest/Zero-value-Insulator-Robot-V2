@@ -160,6 +160,17 @@ private:
 	// 协议线程回调：0x17校准命令应答，转成信号切到UI线程
 	void CallBack_CalibAnswer(const CCalibAnswer& answer);
 
+	/// <summary>
+	/// 协议线程回调：0x1A舵机到位反馈
+	/// 正常到位(0x01)时触发测量，超时(0x00)时报警中止；手动模式下只记录日志
+	/// </summary>
+	void CallBack_ServoArrival(const CServoArrivalFeedback& feedback);
+
+	/// <summary>
+	/// UI线程处理舵机到位反馈
+	/// </summary>
+	void OnServoArrivalFeedback(const CServoArrivalFeedback& feedback);
+
 	void savePixmap(const QPixmap& pixmap);
 
 	// 测量流程中截图保存，文件名含内测/外侧标记、序号与时间（仅UI线程调用）

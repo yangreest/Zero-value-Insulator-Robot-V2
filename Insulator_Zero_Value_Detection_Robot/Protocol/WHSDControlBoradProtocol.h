@@ -15,6 +15,41 @@ public:
 };
 
 /// <summary>
+/// 0x1A 舵机到位反馈帧（对应《舵机到位反馈通讯协议 V1.0》）
+/// 主控板主动上报：运动结束或超时后输出
+/// </summary>
+class CServoArrivalFeedback
+{
+public:
+	CServoArrivalFeedback();
+
+	/// <summary>
+	/// 结果：0x01=正常到位，0x00=超时未到位
+	/// </summary>
+	uint8_t m_cResult;
+
+	/// <summary>
+	/// 目标位置（0-4095步），大端无符号16位
+	/// </summary>
+	uint16_t m_wTargetPos;
+
+	/// <summary>
+	/// 实际位置（0-4095步），大端无符号16位，上报瞬间舵机真实读取位置
+	/// </summary>
+	uint16_t m_wActualPos;
+
+	/// <summary>
+	/// 判断是否正常到位：|实际位置-目标位置| ≤20步（约±1.8°）
+	/// </summary>
+	bool IsArrived() const;
+
+	/// <summary>
+	/// 将步数转换为角度：角度 = 步数 × 360 ÷ 4095
+	/// </summary>
+	static double StepsToAngle(uint16_t wSteps);
+};
+
+/// <summary>
 /// 0x17 校准命令应答（对应《单点定标协议与流程 V1.0》）
 /// 应答数据域统一为：子命令 + 结果 + 原因 + 参数1(4B) + 参数2(4B)，参数均为int32毫值大端
 /// </summary>
@@ -215,6 +250,12 @@ public:
 
 	void RegisterCalibCallBack(const std::function<void(const CCalibAnswer&)>& f);
 
+	/// <summary>
+	/// 注册舵机到位反馈回调（CMD=0x1A）
+	/// 正常到位或超时异常均会上报，上位机需根据结果判断后续处理
+	/// </summary>
+	void RegisterServoArrivalCallBack(const std::function<void(const CServoArrivalFeedback&)>& f);
+
 	uint8_t m_cPackNumber;
 
 	/// <summary>
@@ -328,6 +369,11 @@ private:
 	std::function<void(CSensorData*)> m_function_SensorDataCallBack;
 
 	std::function<void(const CCalibAnswer&)> m_function_CalibCallBack;
+
+	/// <summary>
+	/// 舵机到位反馈回调（CMD=0x1A）：结果/目标位置/实际位置
+	/// </summary>
+	std::function<void(const CServoArrivalFeedback&)> m_function_ServoArrivalCallBack;
 
 	std::vector<uint8_t> m_vectorCmdData;
 

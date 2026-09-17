@@ -60,12 +60,23 @@ CMD_CONFIG = 0x0D
 CMD_MEASURE_RESULT = 0x0F
 CMD_SENSOR = 0x11
 CMD_CALIB = 0x17
+CMD_SERVO_ARRIVAL = 0x1A   # 舵机到位反馈帧
 
 CALIB_RESET = 0x05
 CALIB_QUERY_RAW = 0x06
 CALIB_READ_COEF = 0x0C
 CALIB_VERIFY = 0x0A
 CALIB_SINGLE_POINT = 0x0E
+
+# 舵机子命令
+SERVO_RUN_TO_ANGLE = 0x01   # 运行至指定角度
+SERVO_RETURN_ZERO = 0x04    # 回零
+
+# 舵机常量（对应《舵机到位反馈通讯协议 V1.0》）
+SERVO_STEPS_MAX = 4095       # 舵机最大步数
+SERVO_HOME_STEPS = 1322      # 回零位置（约116°）
+SERVO_ARRIVE_THRESHOLD = 20   # 到位判定阈值：±20步（约±1.8°）
+SERVO_TRAVEL_TIME_PER_DEGREE = 0.03  # 每度行程时间（秒），模拟用
 
 # 心跳数据域固定长度
 HEARTBEAT_DATA_LEN = 64
@@ -131,6 +142,10 @@ class DeviceState:
         self.last_raw_time = 0.0
         # 传感器(测量模块)状态: 0待机 1触发 2触发完成 3未找到设备
         self.sensor_status = 0
+        # 舵机状态（对应《舵机到位反馈通讯协议 V1.0》）
+        self.servo_current_pos = 0  # 当前舵机位置（0-4095步）
+        self.servo_target_pos = 0  # 当前目标位置（0-4095步）
+        self.servo_moving = False  # 是否正在运动中
         # 统计
         self.rx_count = 0
         self.tx_count = 0
@@ -156,7 +171,7 @@ def cmd_name(cmd):
         CMD_VERSION: "版本0x06", CMD_LOG: "设备日志0x07", CMD_POWER_ALL: "总电源0x08",
         CMD_FACTORY_MODE: "工厂模式0x09", CMD_OTA_ENTER: "OTA进入0x0A", CMD_OTA_DATA: "OTA数据0x0B",
         CMD_OTA_END: "OTA结束0x0C", CMD_CONFIG: "配置0x0D", CMD_MEASURE_RESULT: "测量结果0x0F",
-        CMD_SENSOR: "传感器0x11", CMD_CALIB: "校准0x17",
+        CMD_SENSOR: "传感器0x11", CMD_CALIB: "校准0x17", CMD_SERVO_ARRIVAL: "舵机到位0x1A",
     }.get(cmd, "未知0x%02X" % cmd)
 
 
@@ -219,7 +234,7 @@ class DeviceServer:
     def handle(self, f: Frame):
         st = self.state
         st.rx_count += 1
-        print("[RX] %s 序号=%d 共%d字节  %s" % (cmd_name(f.cmd), f.pack_num, len(f.data), hexs(f.data) if f.data else ""))
+        # print("[RX] %s 序号=%d 共%d字节  %s" % (cmd_name(f.cmd), f.pack_num, len(f.data), hexs(f.data) if f.data else ""))
 
         if f.cmd == CMD_HEARTBEAT:
             # 上位机心跳: data=最近收到的设备包序号 -> 回 64 字节状态
@@ -238,8 +253,10 @@ class DeviceServer:
                     st.motor[target][0] = 0xFF if enable in (1, 2) else 0x00
             verb = {1: "运行", 2: "刹车", 3: "停止"}.get(enable, "未知(%d)" % enable)
             print("    >> 电机%d %s 模式=%d" % (target, verb, mode))
-            # 模拟动作完成后回报日志
-            self.send(CMD_LOG, ("[设备] 电机%d %s完成" % (target, verb)).encode("gbk", "replace"))
+
+            # 舵机控制 (target=0x05) 且使能时处理到位反馈
+            if target == 0x05 and enable in (1, 2) and mode in (SERVO_RUN_TO_ANGLE, SERVO_RETURN_ZERO):
+                self.handle_servo_run(f.data, mode)
             return
 
         if f.cmd in (CMD_DELAY_TIME, CMD_PULSES, CMD_XRAY_START, CMD_XRAY_STOP,
@@ -374,6 +391,83 @@ class DeviceServer:
         else:
             answer(0x00, 0x05)
 
+    # ---------------- 舵机到位反馈（CMD=0x1A）----------------
+    def handle_servo_run(self, data, mode):
+        """
+        处理舵机运动命令并延时发送到位反馈
+        对应《舵机到位反馈通讯协议 V1.0》
+        """
+        st = self.state
+
+        # 解析舵机运动命令
+        # 格式: [target=0x05, enable, runMode, angle(1B), speed_H(1B), speed_L(1B)] 或
+        #       [target=0x05, enable, runMode, speed(1B)] (无角度参数时使用默认)
+        angle = data[3] if len(data) >= 4 else 0
+        speed = 0
+        if len(data) >= 6:
+            speed = (data[4] << 8) | data[5]
+        elif len(data) >= 4:
+            speed = data[3]
+
+        # 计算目标位置
+        if mode == SERVO_RETURN_ZERO:
+            # 回零子命令：目标位置为收纳位置 1322 步
+            target_pos = SERVO_HOME_STEPS
+            print("    >> 舵机回零命令，目标位置=%d步" % target_pos)
+        else:
+            # 运行至指定角度子命令
+            # 角度转步数: 步数 = 角度 × 4095 ÷ 360
+            target_pos = int(angle * SERVO_STEPS_MAX / 360)
+            target_pos = max(0, min(SERVO_STEPS_MAX, target_pos))
+            print("    >> 舵机运行命令，角度=%d° → 目标位置=%d步 速度=%d" % (angle, target_pos, speed))
+
+        # 更新舵机状态
+        with st.lock:
+            st.servo_target_pos = target_pos
+            st.servo_moving = True
+
+        # 计算延时时间
+        # 行程时间 = |目标 - 当前| × 每步时间
+        # 每步约 360°/4095 / (速度 × 50步/秒)，简化模拟
+        current_pos = st.servo_current_pos
+        pos_diff = abs(target_pos - current_pos)
+
+        # 动态计算超时时间：行程时间 × 1.5 + 2s，下限5s，上限120s
+        travel_time = pos_diff * SERVO_TRAVEL_TIME_PER_DEGREE / 50.0 if speed > 0 else pos_diff * 0.001
+        timeout = max(5.0, min(120.0, travel_time * 1.5 + 2.0))
+
+        # 模拟到位延时（使用 timeout 作为运动时间）
+        def servo_arrive():
+            # 模拟到位：实际位置等于目标位置（正常到位）
+            arrival_pos = target_pos
+            with st.lock:
+                st.servo_current_pos = arrival_pos
+                st.servo_moving = False
+            self.send_servo_arrival(0x01, target_pos, arrival_pos)  # 正常到位
+
+        # 启动延时定时器
+        threading.Timer(timeout, servo_arrive).start()
+        print("    >> 舵机运动模拟：预计 %.1f 秒后发送到位反馈" % timeout)
+
+    def send_servo_arrival(self, result, target_pos, actual_pos):
+        """
+        发送舵机到位反馈帧 (CMD=0x1A)
+        对应《舵机到位反馈通讯协议 V1.0》
+        载荷: 结果(1B) + 目标位置(2B大端) + 实际位置(2B大端)
+        """
+        # 目标位置和实际位置均为大端16位无符号
+        target_h = (target_pos >> 8) & 0xFF
+        target_l = target_pos & 0xFF
+        actual_h = (actual_pos >> 8) & 0xFF
+        actual_l = actual_pos & 0xFF
+        payload = bytes([result, target_h, target_l, actual_h, actual_l])
+        self.send(CMD_SERVO_ARRIVAL, payload)
+        result_str = "正常到位" if result == 0x01 else "超时异常"
+        target_angle = target_pos * 360 / SERVO_STEPS_MAX
+        actual_angle = actual_pos * 360 / SERVO_STEPS_MAX
+        print("[TX] 舵机到位反馈 0x1A: %s 目标=%d步(%.1f°) 实际=%d步(%.1f°)"
+              % (result_str, target_pos, target_angle, actual_pos, actual_angle))
+
     # ---------------- 主动上报 ----------------
     def send_measure_result(self, mega_ohm, calibrated=True):
         """
@@ -485,6 +579,9 @@ class DeviceServer:
   motor <0-3> on|off 设置某组电机使能位图
   fault <0-3> <0-7>  设置某组电机故障码(每电机3位)
   calib              查看当前校准系数
+  servo pos <0-4095> 设置舵机当前位置(模拟当前角度)
+  servo arrive <target> [actual]  立即发送到位反馈(正常到位0x01)
+  servo timeout <target>          立即发送超时反馈(异常0x00)
   stat               查看收发包统计
   help               显示本帮助
   quit               退出模拟器
@@ -551,6 +648,36 @@ class DeviceServer:
                         print("当前校准系数: a=%.3f b=%d 毫值, 原始值=%s"
                               % (st.calib_a / 1000.0, st.calib_b,
                                  ("%d 毫值" % st.last_raw_milli) if st.last_raw_milli is not None else "无"))
+                elif cmd == "servo" and len(parts) >= 3:
+                    servo_cmd = parts[1].lower()
+                    if servo_cmd == "pos" and len(parts) >= 3:
+                        # 设置舵机当前位置
+                        pos = max(0, min(SERVO_STEPS_MAX, int(parts[2])))
+                        with st.lock:
+                            st.servo_current_pos = pos
+                        angle = pos * 360 / SERVO_STEPS_MAX
+                        print("舵机当前位置 -> %d步 (%.1f°)" % (pos, angle))
+                    elif servo_cmd == "arrive" and len(parts) >= 3:
+                        # 手动发送到位反馈
+                        target = max(0, min(SERVO_STEPS_MAX, int(parts[2])))
+                        actual = target if len(parts) < 4 else max(0, min(SERVO_STEPS_MAX, int(parts[3])))
+                        self.send_servo_arrival(0x01, target, actual)
+                    elif servo_cmd == "timeout" and len(parts) >= 3:
+                        # 手动发送超时反馈
+                        target = max(0, min(SERVO_STEPS_MAX, int(parts[2])))
+                        # 实际位置设为当前位置（模拟卡滞）
+                        with st.lock:
+                            actual = st.servo_current_pos
+                        self.send_servo_arrival(0x00, target, actual)
+                    else:
+                        # 显示舵机状态
+                        with st.lock:
+                            print("舵机状态: 当前位置=%d步(%.1f°) 目标=%d步(%.1f°) 运动中=%s"
+                                  % (st.servo_current_pos,
+                                     st.servo_current_pos * 360 / SERVO_STEPS_MAX,
+                                     st.servo_target_pos,
+                                     st.servo_target_pos * 360 / SERVO_STEPS_MAX,
+                                     "是" if st.servo_moving else "否"))
                 elif cmd == "stat":
                     print("接收帧: %d  发送帧: %d  当前连接: %s"
                           % (st.rx_count, st.tx_count, "在线" if self.sock else "离线"))

@@ -134,7 +134,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		}
 		});
 
-	ui.groupBox_7->setVisible(false);
+	//ui.groupBox_7->setVisible(false);
 
 	// 获取结果,执行下一个
 	if (overlayLabel == nullptr)
@@ -283,6 +283,7 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 	pWHSDControlBoardProtocol->RegisterSensorDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterZeroDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterCalibCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer, this, std::placeholders::_1));
+	pWHSDControlBoardProtocol->RegisterServoArrivalCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ServoArrival, this, std::placeholders::_1));
 	//	std::placeholders::_1,
 	//	std::placeholders::_2, std::placeholders::_3));
 	//pWHSDControlBoardProtocol->RegisterXRaySendResult(xRayResult);
@@ -826,6 +827,69 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer(const CCalibAnsw
 	// 回调运行在协议线程，不得直接操作界面，发信号由队列连接切到UI线程
 	emit CalibAnswerSignal(answer.m_cSubCmd, answer.m_cResult, answer.m_cReason,
 		answer.m_nValue1, answer.m_nValue2);
+}
+
+// ===================== 舵机到位反馈流程（CMD=0x1A）=====================
+// 对应《舵机到位反馈通讯协议 V1.0》
+// 主控板主动上报到位结果，上位机根据结果决定后续处理
+
+void Insulator_Zero_Value_Detection_Robot::CallBack_ServoArrival(const CServoArrivalFeedback& feedback)
+{
+	// 回调运行在协议线程，禁止直接操作界面，切到UI线程处理
+	QMetaObject::invokeMethod(this, [this, feedback]() {
+		OnServoArrivalFeedback(feedback);
+		}, Qt::QueuedConnection);
+}
+
+void Insulator_Zero_Value_Detection_Robot::OnServoArrivalFeedback(const CServoArrivalFeedback& feedback)
+{
+	// 记录日志
+	const double dTargetAngle = CServoArrivalFeedback::StepsToAngle(feedback.m_wTargetPos);
+	const double dActualAngle = CServoArrivalFeedback::StepsToAngle(feedback.m_wActualPos);
+	if (m_pDeviceLog)
+	{
+		if (feedback.m_cResult == 0x01)
+		{
+			m_pDeviceLog->WriteFormat("舵机到位反馈:正常到位 目标=%d步(%.1f°) 实际=%d步(%.1f°)",
+				feedback.m_wTargetPos, dTargetAngle, feedback.m_wActualPos, dActualAngle);
+		}
+		else
+		{
+			m_pDeviceLog->WriteFormat("舵机到位反馈:超时异常 目标=%d步(%.1f°) 实际=%d步(%.1f°)",
+				feedback.m_wTargetPos, dTargetAngle, feedback.m_wActualPos, dActualAngle);
+		}
+	}
+
+	// 仅在测量流程等待到位期间处理反馈
+	if (m_nMeasureStep == 0)
+	{
+		// 非测量流程：手动模式下只记录日志，不做其他处理
+		return;
+	}
+
+	// 停止到位轮询定时器（无论哪种结果都停止轮询）
+	if (m_pProbeWaitTimer != nullptr)
+		m_pProbeWaitTimer->stop();
+
+	if (feedback.m_cResult == 0x01)
+	{
+		// 正常到位：触发测量
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("舵机到位反馈:正常到位，触发测量流程");
+		TriggerMeasureAndArm();
+	}
+	else
+	{
+		// 超时异常：记录告警并中止测量
+		QString strSide = ui.comboBox_2->currentText();
+		QString strDira = ui.comboBox->currentText();
+		QString strReason = QStringLiteral("舵机到位超时：目标%1步 实际%2步（偏差%3步）")
+			.arg(feedback.m_wTargetPos).arg(feedback.m_wActualPos)
+			.arg(qAbs(static_cast<int>(feedback.m_wActualPos) - static_cast<int>(feedback.m_wTargetPos)));
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("舵机到位反馈:超时异常，中止测量流程");
+		AbortMeasure(strReason);
+	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::CalibAppendLog(const QString& strText)

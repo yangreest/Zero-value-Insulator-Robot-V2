@@ -18,6 +18,23 @@ CSensorData::CSensorData()
 	m_wValue = 0;
 }
 
+CServoArrivalFeedback::CServoArrivalFeedback()
+	: m_cResult(0), m_wTargetPos(0), m_wActualPos(0)
+{
+}
+
+bool CServoArrivalFeedback::IsArrived() const
+{
+	// 到位判定阈值：|实际位置-目标位置| ≤20步（约±1.8°）
+	int nDiff = static_cast<int>(m_wActualPos) - static_cast<int>(m_wTargetPos);
+	return (nDiff >= -20 && nDiff <= 20);
+}
+
+double CServoArrivalFeedback::StepsToAngle(uint16_t wSteps)
+{
+	return static_cast<double>(wSteps) * 360.0 / 4095.0;
+}
+
 CCalibAnswer::CCalibAnswer()
 {
 	m_cSubCmd = 0;
@@ -416,6 +433,25 @@ bool CWHSDControlBoardProtocol::Parse()
 						}
 						break;
 					}
+					case 0x1A:
+					{
+						// 舵机到位反馈帧（对应《舵机到位反馈通讯协议 V1.0》）
+						// 载荷：结果(1B) + 目标位置(2B大端) + 实际位置(2B大端)
+						if (m_vectorCmdData.size() < 5)
+						{
+							break;
+						}
+						CServoArrivalFeedback feedback;
+						feedback.m_cResult = m_vectorCmdData[0];
+						// 目标位置和实际位置均为大端16位无符号
+						feedback.m_wTargetPos = (static_cast<uint16_t>(m_vectorCmdData[1]) << 8) | m_vectorCmdData[2];
+						feedback.m_wActualPos = (static_cast<uint16_t>(m_vectorCmdData[3]) << 8) | m_vectorCmdData[4];
+						if (m_function_ServoArrivalCallBack != nullptr)
+						{
+							m_function_ServoArrivalCallBack(feedback);
+						}
+						break;
+					}
 					case 0x1F:
 					{
 
@@ -483,6 +519,11 @@ void CWHSDControlBoardProtocol::RegisterSensorDataCallBack(const std::function<v
 void CWHSDControlBoardProtocol::RegisterCalibCallBack(const std::function<void(const CCalibAnswer&)>& f)
 {
 	m_function_CalibCallBack = f;
+}
+
+void CWHSDControlBoardProtocol::RegisterServoArrivalCallBack(const std::function<void(const CServoArrivalFeedback&)>& f)
+{
+	m_function_ServoArrivalCallBack = f;
 }
 
 std::vector<uint8_t> CWHSDControlBoardProtocol::DeviceRun(uint8_t target, uint8_t enable, uint8_t runMode,
