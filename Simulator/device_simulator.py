@@ -255,7 +255,7 @@ class DeviceServer:
             print("    >> 电机%d %s 模式=%d" % (target, verb, mode))
 
             # 舵机控制 (target=0x05) 且使能时处理到位反馈
-            if target == 0x05 and enable in (1, 2) and mode in (SERVO_RUN_TO_ANGLE, SERVO_RETURN_ZERO):
+            if target == 0x05 and enable in (1, 3) and mode in (SERVO_RUN_TO_ANGLE, SERVO_RETURN_ZERO):
                 self.handle_servo_run(f.data, mode)
             return
 
@@ -434,7 +434,7 @@ class DeviceServer:
 
         # 动态计算超时时间：行程时间 × 1.5 + 2s，下限5s，上限120s
         travel_time = pos_diff * SERVO_TRAVEL_TIME_PER_DEGREE / 50.0 if speed > 0 else pos_diff * 0.001
-        timeout = max(5.0, min(120.0, travel_time * 1.5 + 2.0))
+        timeout = max(2.0, min(120.0, travel_time * 1.5 + 2.0))
 
         # 模拟到位延时（使用 timeout 作为运动时间）
         def servo_arrive():
