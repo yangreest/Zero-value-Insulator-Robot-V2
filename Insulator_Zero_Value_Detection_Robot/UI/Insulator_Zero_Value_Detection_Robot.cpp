@@ -68,7 +68,7 @@ static const int CALIB_MEASURE_INTERVAL_MS = 800;
 // 探针到位轮询周期
 static const int PROBE_ARRIVE_POLL_MS = 100;
 // 探针到位兜底等待:协议未提供到位信号前的最大等待，收到到位信号可提前触发
-static const int PROBE_ARRIVE_TIMEOUT_MS = 4000;
+static const int PROBE_ARRIVE_TIMEOUT_MS = 8000;
 // 测量结果超时:0x0F约3.2秒回报，超时未收到判为测量失败(无返回值)
 static const int MEASURE_RESULT_TIMEOUT_MS = 8000;
 
@@ -134,7 +134,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		}
 		});
 
-	//ui.groupBox_7->setVisible(false);
+	ui.groupBox_7->setVisible(false);
 
 	// 获取结果,执行下一个
 	if (overlayLabel == nullptr)
