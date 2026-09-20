@@ -32,6 +32,7 @@ WHSD 控制板协议模拟服务端
 连接后在控制台输入命令交互(输入 help 查看列表)。
 """
 
+import random
 import socket
 import struct
 import threading
@@ -251,8 +252,8 @@ class DeviceServer:
             with st.lock:
                 if target < 4:
                     st.motor[target][0] = 0xFF if enable in (1, 2) else 0x00
-            verb = {1: "运行", 2: "刹车", 3: "停止"}.get(enable, "未知(%d)" % enable)
-            print("    >> 电机%d %s 模式=%d" % (target, verb, mode))
+            verb = {1: "运行", 2: "刹车", 3: "停止"}.get(mode, "未知(%d)" % mode)
+            print("    >> 电机%d %s " % (target, verb))
 
             # 舵机控制 (target=0x05) 且使能时处理到位反馈
             if target == 0x05 and enable in (1, 3) and mode in (SERVO_RUN_TO_ANGLE, SERVO_RETURN_ZERO):
@@ -288,12 +289,21 @@ class DeviceServer:
 
         if f.cmd == CMD_SENSOR:
             # 上位机: {index, cmd, value高, value低}; 设备回: {index, cmd, value(uint16 小端 memcpy)}
+            
             index, scmd = f.data[0], f.data[1]
             value = 0
             if scmd == 2 or scmd == 3 or scmd == 4:
                 value = st.sensor_status
             reply = bytes([index, scmd]) + struct.pack("<H", value)
             self.send(CMD_SENSOR, reply)
+
+            mode = f.data[1]# 执行的任务 1 测量开启
+            if mode == 1:
+                print("    >> 测量开启")
+                #获取一个1000-5000 的随机数
+                valueRet = random.randint(1000, 5000)  # 获取一个1000-5000 的随机数
+                #延迟5s发送测量结果
+                self.send_measure_result(float(valueRet))
             return
 
         if f.cmd == CMD_CALIB:

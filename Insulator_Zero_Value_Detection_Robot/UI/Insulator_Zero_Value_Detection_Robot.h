@@ -132,9 +132,9 @@ public slots:
     void On_NewReportSignal(CNewReportConfig strReport);
 	void On_ChangeReportSignal(CNewReportConfig strReport);
 
-	// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
-	// 置位后到位轮询会立即触发测量,无需等待兜底超时
-	void NotifyProbeArrived();
+    // Deleted:// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
+    // Deleted:// 置位后到位轮询会立即触发测量,无需等待兜底超时
+    // Deleted:void NotifyProbeArrived();
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;
@@ -314,12 +314,12 @@ private:
 	QTimer* m_pProbeWaitTimer = nullptr;
 	// 测量结果超时定时器（单次，发出测量指令后启动）
 	QTimer* m_pMeasureTimeoutTimer = nullptr;
-	// 本轮到位等待的起始时刻，用于计算兜底超时
-	QDateTime m_probeWaitStart;
-	// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
-	std::atomic<bool> m_bProbeArrived{ false };
-	// 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
-	bool m_bPendingInsideCapture = true;
+    // 本轮到位等待的起始时刻，用于计算兜底超时
+    QDateTime m_probeWaitStart;
+    // Deleted:// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
+    // Deleted:std::atomic<bool> m_bProbeArrived{ false };
+    // 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
+    bool m_bPendingInsideCapture = true;
 	int m_nPendingStep = 1;
 	QString m_strPendingMeasureText;
 

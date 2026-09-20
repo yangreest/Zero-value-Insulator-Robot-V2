@@ -417,11 +417,11 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	{
 		// 每1秒轮询一次检测模块状态/电量/结果，保证设备状态实时刷新(之前被注释导致状态恒为待机)
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 2, 0);
-		m_pComDevice->Write(cmds.data(), cmds.size());
+		//m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 3, 0);
-		m_pComDevice->Write(cmds.data(), cmds.size());
+		//m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 4, 0);
-		m_pComDevice->Write(cmds.data(), cmds.size());
+		//m_pComDevice->Write(cmds.data(), cmds.size());
 	}
 
 	ui.label_34->setText(QString::number(m_nHeartBeatCount));
@@ -860,16 +860,19 @@ void Insulator_Zero_Value_Detection_Robot::OnServoArrivalFeedback(const CServoAr
 		}
 	}
 
-	// 仅在测量流程等待到位期间处理反馈
-	if (m_nMeasureStep == 0)
-	{
-		// 非测量流程：手动模式下只记录日志，不做其他处理
-		return;
-	}
-
-	// 停止到位轮询定时器（无论哪种结果都停止轮询）
-	if (m_pProbeWaitTimer != nullptr)
-		m_pProbeWaitTimer->stop();
+    // 仅在"探针等待到位"流程中处理反馈：以轮询定时器是否活动为准
+    // 注意不能用 m_nMeasureStep==0 判断——探针移动/等待阶段 m_nMeasureStep 仍为0，
+    // 它只在 TriggerMeasureAndArm() 后才置位；手动模式下定时器未启动，仅记日志返回
+    if (m_pProbeWaitTimer == nullptr || !m_pProbeWaitTimer->isActive())
+    {
+        if (m_pDeviceLog)
+            m_pDeviceLog->Write("舵机到位反馈:非测量等待流程，仅记录日志");
+        return;
+    }
+	m_pProbeWaitTimer->stop();
+    // Deleted:// 停止到位轮询定时器（无论哪种结果都停止轮询）
+    // Deleted:if (m_pProbeWaitTimer != nullptr)
+    // Deleted:	m_pProbeWaitTimer->stop();
 
 	if (feedback.m_cResult == 0x01)
 	{
@@ -877,12 +880,13 @@ void Insulator_Zero_Value_Detection_Robot::OnServoArrivalFeedback(const CServoAr
 		if (m_pDeviceLog)
 			m_pDeviceLog->Write("舵机到位反馈:正常到位，触发测量流程");
 		TriggerMeasureAndArm();
+		//NotifyProbeArrived();
 	}
 	else
 	{
 		// 超时异常：记录告警并中止测量
-		QString strSide = ui.comboBox_2->currentText();
-		QString strDira = ui.comboBox->currentText();
+		//QString strSide = ui.comboBox_2->currentText();
+		//QString strDira = ui.comboBox->currentText();
 		QString strReason = QStringLiteral("舵机到位超时：目标%1步 实际%2步（偏差%3步）")
 			.arg(feedback.m_wTargetPos).arg(feedback.m_wActualPos)
 			.arg(qAbs(static_cast<int>(feedback.m_wActualPos) - static_cast<int>(feedback.m_wTargetPos)));
@@ -2150,7 +2154,7 @@ void Insulator_Zero_Value_Detection_Robot::StartProbeMoveAndWait(quint8 cAngle, 
 	UpdateMeasureWaitDialog(strWaitText);
 
 	// 启动到位轮询:每周期判断到位信号或兜底超时
-	m_bProbeArrived = false;
+	//m_bProbeArrived = false;
 	m_probeWaitStart = QDateTime::currentDateTime();
 	if (m_pProbeWaitTimer == nullptr)
 	{
@@ -2173,13 +2177,17 @@ void Insulator_Zero_Value_Detection_Robot::On_ProbeWaitTick()
 		return;
 	}
 	// 收到下位机到位信号立即触发测量（问题7,提升效率）;否则超过兜底等待时间按现状触发
-	bool bArrived = m_bProbeArrived.load();
+	//bool bArrived = m_bProbeArrived.load();
 	qint64 nElapsed = m_probeWaitStart.msecsTo(QDateTime::currentDateTime());
-	if (bArrived || nElapsed >= PROBE_ARRIVE_TIMEOUT_MS)
+	if (nElapsed >= PROBE_ARRIVE_TIMEOUT_MS)
 	{
 		m_pProbeWaitTimer->stop();
 		TriggerMeasureAndArm();
 	}
+    // Deleted:else
+    // Deleted:{
+    // Deleted:	m_pProbeWaitTimer->start(PROBE_ARRIVE_POLL_MS);
+    // Deleted:}
 }
 
 void Insulator_Zero_Value_Detection_Robot::TriggerMeasureAndArm()
@@ -2241,11 +2249,11 @@ void Insulator_Zero_Value_Detection_Robot::AbortMeasure(const QString& strReason
 		m_pDeviceLog->Write("测量异常自动结束:" + strReason.toStdString());
 }
 
-void Insulator_Zero_Value_Detection_Robot::NotifyProbeArrived()
-{
-	// 预留:下位机到位信号到达时置位,到位轮询会立即触发测量（问题7）
-	m_bProbeArrived = true;
-}
+// void Insulator_Zero_Value_Detection_Robot::NotifyProbeArrived()
+// {
+// 	// 预留:下位机到位信号到达时置位,到位轮询会立即触发测量（问题7）
+// 	m_bProbeArrived = true;
+// }
 
 void Insulator_Zero_Value_Detection_Robot::OnMeasureResult(int nStep)
 {
