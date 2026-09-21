@@ -209,6 +209,11 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	ui.tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	// 或者只拉伸最后一列
 
+	// 所有表格只读:禁止双击/键盘编辑（工单/报告/告警数据均由程序填充）
+	ui.tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	ui.tableWidget_2->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	ui.tableWidget_3->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
 	// 如果有其他表格也需要设置
 	ui.tableWidget_2->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	ui.tableWidget_3->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);

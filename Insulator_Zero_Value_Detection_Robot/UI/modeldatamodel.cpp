@@ -129,7 +129,8 @@ bool ModelDataModel::setData(const QModelIndex &index, const QVariant &value, in
 
 Qt::ItemFlags ModelDataModel::flags(const QModelIndex &index) const
 {
-    return QAbstractItemModel::flags(index) | Qt::ItemIsEditable;
+    // 只读表格:不允许编辑（去掉Qt::ItemIsEditable，双击/键盘均不进入编辑态）
+    return QAbstractItemModel::flags(index);
 }
 
 void ModelDataModel::addMapping(const QString &color, const QRect &area)
