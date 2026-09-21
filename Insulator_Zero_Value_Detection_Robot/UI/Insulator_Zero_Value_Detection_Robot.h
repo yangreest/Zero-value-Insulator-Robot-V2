@@ -87,7 +87,7 @@ private slots:
 	void On_ResetReport_Click();
 
 	void On_forword_Click();
-    void On_backward_Click();
+	void On_backward_Click();
 	void On_neddle1_Click();
 	void On_neddle2_Click();
 	void On_neddle3_Click();
@@ -129,12 +129,12 @@ private slots:
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
 	void On_ChangeTicketSignal(CNewTicketConfig strTicket);
-    void On_NewReportSignal(CNewReportConfig strReport);
+	void On_NewReportSignal(CNewReportConfig strReport);
 	void On_ChangeReportSignal(CNewReportConfig strReport);
 
-    // Deleted:// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
-    // Deleted:// 置位后到位轮询会立即触发测量,无需等待兜底超时
-    // Deleted:void NotifyProbeArrived();
+	// Deleted:// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
+	// Deleted:// 置位后到位轮询会立即触发测量,无需等待兜底超时
+	// Deleted:void NotifyProbeArrived();
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;
@@ -206,6 +206,10 @@ private:
 	void TriggerMeasureAndArm();
 	// 异常结束本次测量:探针复原、关闭等待窗、恢复按钮、清步骤并记录告警
 	void AbortMeasure(const QString& strReason);
+	// 计算当前待测量位置对应的测量表格表头与0-based行号，供测量告警写入测量数据表格
+	void CalcPendingCell(QString& strHeader, int& nRow);
+	// 把测量告警同步写入测量数据表格对应单元格（探针超时/测量超时/数据异常等）
+	void AddMeasureTableAlarm(const QString& strHeader, int nRow, const QString& strReason);
 
 	// ===== 告警面板 =====
 	// 在告警表(tableWidget)首行插入一条告警(时间/类型/位置/详情/状态),仅UI线程调用
@@ -314,12 +318,12 @@ private:
 	QTimer* m_pProbeWaitTimer = nullptr;
 	// 测量结果超时定时器（单次，发出测量指令后启动）
 	QTimer* m_pMeasureTimeoutTimer = nullptr;
-    // 本轮到位等待的起始时刻，用于计算兜底超时
-    QDateTime m_probeWaitStart;
-    // Deleted:// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
-    // Deleted:std::atomic<bool> m_bProbeArrived{ false };
-    // 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
-    bool m_bPendingInsideCapture = true;
+	// 本轮到位等待的起始时刻，用于计算兜底超时
+	QDateTime m_probeWaitStart;
+	// Deleted:// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
+	// Deleted:std::atomic<bool> m_bProbeArrived{ false };
+	// 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
+	bool m_bPendingInsideCapture = true;
 	int m_nPendingStep = 1;
 	QString m_strPendingMeasureText;
 

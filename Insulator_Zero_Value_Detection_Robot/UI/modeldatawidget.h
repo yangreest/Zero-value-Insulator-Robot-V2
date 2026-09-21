@@ -28,6 +28,8 @@ public:
     void setTableLayout(const QStringList &headers, int rowCount);
     // 每获得一个测量值，填充到对应表头列的下一个空单元格，并绘制曲线点
     void appendValue(const QString &header, double value);
+    // 在对应表头列的指定行记录测量告警（探针超时/测量超时/数据异常等）
+    void setAlarm(const QString &header, int row, const QString &alarm);
     // 重测：删除对应表头列最近一个测量值及其曲线点
     void removeLastValue(const QString &header);
 
@@ -39,6 +41,8 @@ private:
     QTableView *m_tableView = nullptr;
     QSplitter *m_splitter = nullptr;
     int m_nTableIdealWidth = 0;
+    // 曲线图最小宽度：列太多时表格占满后曲线图保底不被挤成一条缝
+    int m_nChartMinWidth = 500;
     QChart *m_chart = nullptr;
     QVector<QLineSeries *> m_series;
     QValueAxis *m_axisX = nullptr;

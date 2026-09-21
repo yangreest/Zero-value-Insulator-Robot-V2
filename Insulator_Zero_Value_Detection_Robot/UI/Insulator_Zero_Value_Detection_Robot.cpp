@@ -11,6 +11,7 @@
 #include <QRegularExpressionValidator>
 #include <QDoubleValidator>
 #include <QScrollBar>
+#include <QScrollArea>
 #include <QHeaderView>
 #include <cmath>
 #include <QDateTime>
@@ -188,11 +189,20 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	m_pModelDataWidget = new ModelDataWidget(ui.widget);
 	m_activeWidget = m_pModelDataWidget;
 	m_activeWidget->load();
+	// 用滚动区域承载曲线控件：表格列过多变宽时出现横向滚动条，
+	// 而不是把最小宽度经splitter→ui.widget一路传给主窗口，导致整个界面被撑宽。
+	// widgetResizable=true：内容不足视口时自动铺满，超出时才显示滚动条。
+	QScrollArea* pChartScrollArea = new QScrollArea(ui.widget);
+	pChartScrollArea->setWidgetResizable(true);
+	pChartScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+	pChartScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+	pChartScrollArea->setFrameShape(QFrame::NoFrame);
+	pChartScrollArea->setWidget(m_activeWidget);
 	// 构造函数中窗口尚未显示/最大化,此时ui.widget->size()不是最终尺寸；
-	// 改用布局管理,让曲线控件自动跟随ui.widget尺寸,避免一次性resize导致启动时不显示
+	// 改用布局管理,让滚动区域自动跟随ui.widget尺寸,避免一次性resize导致启动时不显示
 	QVBoxLayout* pChartLayout = new QVBoxLayout(ui.widget);
 	pChartLayout->setContentsMargins(0, 0, 0, 0);
-	pChartLayout->addWidget(m_activeWidget);
+	pChartLayout->addWidget(pChartScrollArea);
 	m_activeWidget->setVisible(true);
 
 	// 设置表格表头填充
@@ -208,7 +218,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	ui.lineEdit_13->setText(QString::number(m_pConfig->m_memControlBoardConfig.m_cUpAngle2));			// 探针向外的角度
 
 	ui.comboBox_3->setCurrentIndex(m_pConfig->m_memControlBoardConfig.m_cWalkMotorSpeed);				// 控制电机速度
-    ui.comboBox_4->setCurrentIndex(m_pConfig->m_memControlBoardConfig.m_cServoSpeed);
+	ui.comboBox_4->setCurrentIndex(m_pConfig->m_memControlBoardConfig.m_cServoSpeed);
 
 	// IP地址校验 0‑255.0‑255.0‑255.0‑255
 	QRegularExpression ipRx("((2[0-4]\\d|25[0-5]|[01]?\\d\\d?)\\.){3}(2[0-4]\\d|25[0-5]|[01]?\\d\\d?)");
@@ -245,7 +255,7 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 	m_pDeviceLog->Write("InitParam:参数初始化开始,设备日志已启动");
 	m_pConfig = new CConfigManager();
 	if(!m_pConfig->Read(WHSD_Tools::GetAbsolutePath("Config.xml")))
-        m_pDeviceLog->Write("InitParam:参数初始化失败,请检查Config.xml文件");
+		m_pDeviceLog->Write("InitParam:参数初始化失败,请检查Config.xml文件");
 	m_pXInputHelper = new CXInputHelper(0);
 	m_pXInputHelper->RegisterControllerStateCallBack(std::bind(
 		&Insulator_Zero_Value_Detection_Robot::CallBack_ControllerState, this, std::placeholders::_1,
@@ -381,7 +391,7 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	// 保存数据
 	connect(ui.pushButton_3, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveProbeAngle_Click); // 探针角度
 	connect(ui.pushButton_6, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveMotorSpeed_Click); // 电机速度
-    connect(ui.pushButton_19, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveServoSpeed_Click);
+	connect(ui.pushButton_19, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveServoSpeed_Click);
 	connect(ui.pushButton_8, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveRobotIp_Click); // 机器人ip	
 	connect(ui.pushButton_9, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveCameraIp_Click); // 摄像头ip
 	connect(ui.pushButton_29, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_SaveInsuThreshold_Click);// 保存绝缘阈值
@@ -762,8 +772,11 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 			: static_cast<int>(vecData.size());
 		QString strLocation = strSide + " " + strDira + QStringLiteral(" 第%1片").arg(nSliceNo);
 		QString strDetail = QStringLiteral("阻值 %1 MΩ 低于阈值 %2 MΩ").arg(static_cast<double>(value), 0, 'f', 3).arg(wThreshold);
-		QMetaObject::invokeMethod(this, [this, strLocation, strDetail]() {
+		// 同步写入测量数据表格:该格数值标红+悬停显示告警详情
+		QMetaObject::invokeMethod(this, [this, pModelDataWidget, strHeader, nSliceNo, strLocation, strDetail]() {
 			AddAlarm(QStringLiteral("零值/低值"), strLocation, strDetail);
+			if (pModelDataWidget)
+				pModelDataWidget->setAlarm(strHeader, nSliceNo - 1, strDetail);
 			}, Qt::QueuedConnection);
 	}
 
@@ -860,19 +873,19 @@ void Insulator_Zero_Value_Detection_Robot::OnServoArrivalFeedback(const CServoAr
 		}
 	}
 
-    // 仅在"探针等待到位"流程中处理反馈：以轮询定时器是否活动为准
-    // 注意不能用 m_nMeasureStep==0 判断——探针移动/等待阶段 m_nMeasureStep 仍为0，
-    // 它只在 TriggerMeasureAndArm() 后才置位；手动模式下定时器未启动，仅记日志返回
-    if (m_pProbeWaitTimer == nullptr || !m_pProbeWaitTimer->isActive())
-    {
-        if (m_pDeviceLog)
-            m_pDeviceLog->Write("舵机到位反馈:非测量等待流程，仅记录日志");
-        return;
-    }
+	// 仅在"探针等待到位"流程中处理反馈：以轮询定时器是否活动为准
+	// 注意不能用 m_nMeasureStep==0 判断——探针移动/等待阶段 m_nMeasureStep 仍为0，
+	// 它只在 TriggerMeasureAndArm() 后才置位；手动模式下定时器未启动，仅记日志返回
+	if (m_pProbeWaitTimer == nullptr || !m_pProbeWaitTimer->isActive())
+	{
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("舵机到位反馈:非测量等待流程，仅记录日志");
+		return;
+	}
 	m_pProbeWaitTimer->stop();
-    // Deleted:// 停止到位轮询定时器（无论哪种结果都停止轮询）
-    // Deleted:if (m_pProbeWaitTimer != nullptr)
-    // Deleted:	m_pProbeWaitTimer->stop();
+	// Deleted:// 停止到位轮询定时器（无论哪种结果都停止轮询）
+	// Deleted:if (m_pProbeWaitTimer != nullptr)
+	// Deleted:	m_pProbeWaitTimer->stop();
 
 	if (feedback.m_cResult == 0x01)
 	{
@@ -1659,8 +1672,8 @@ void Insulator_Zero_Value_Detection_Robot::On_Screenshot_Click()
 		return;
 	}
 
-    QString fileName = QFileDialog::getSaveFileName(this, "保存图片", "截图", "PNG 文件 (*.png)");
-    if (!fileName.isEmpty()) {
+	QString fileName = QFileDialog::getSaveFileName(this, "保存图片", "截图", "PNG 文件 (*.png)");
+	if (!fileName.isEmpty()) {
 		if (!pixmap.save(fileName)) {
 			if (m_pDeviceLog)
 				m_pDeviceLog->Write("测量截图失败:保存图片失败");
@@ -2182,12 +2195,21 @@ void Insulator_Zero_Value_Detection_Robot::On_ProbeWaitTick()
 	if (nElapsed >= PROBE_ARRIVE_TIMEOUT_MS)
 	{
 		m_pProbeWaitTimer->stop();
+		// 未收到到位信号:记录探针告警（告警表+测量数据表格），仍按现状触发测量
+		const QString strSide = ui.comboBox_2->currentText();
+		const QString strDira = ui.comboBox->currentText();
+		const QString strReason = QStringLiteral("未收到探针到位信号，按兜底时间触发测量");
+		AddAlarm(QStringLiteral("探针异常"), strSide + " " + strDira, strReason);
+		QString strCellHeader;
+		int nCellRow = -1;
+		CalcPendingCell(strCellHeader, nCellRow);
+		AddMeasureTableAlarm(strCellHeader, nCellRow, strReason);
 		TriggerMeasureAndArm();
 	}
-    // Deleted:else
-    // Deleted:{
-    // Deleted:	m_pProbeWaitTimer->start(PROBE_ARRIVE_POLL_MS);
-    // Deleted:}
+	// Deleted:else
+	// Deleted:{
+	// Deleted:	m_pProbeWaitTimer->start(PROBE_ARRIVE_POLL_MS);
+	// Deleted:}
 }
 
 void Insulator_Zero_Value_Detection_Robot::TriggerMeasureAndArm()
@@ -2243,10 +2265,34 @@ void Insulator_Zero_Value_Detection_Robot::AbortMeasure(const QString& strReason
 	HideMeasureWaitDialog();
 	SetMeasureUiEnabled(true);
 
-	// 记录告警（问题3/6）
+	// 记录告警（问题3/6）:同时写入告警表与测量数据表格对应单元格
 	AddAlarm(QStringLiteral("测量异常"), strSide + " " + strDira, strReason);
+	QString strCellHeader;
+	int nCellRow = -1;
+	CalcPendingCell(strCellHeader, nCellRow);
+	AddMeasureTableAlarm(strCellHeader, nCellRow, strReason);
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("测量异常自动结束:" + strReason.toStdString());
+}
+
+void Insulator_Zero_Value_Detection_Robot::CalcPendingCell(QString& strHeader, int& nRow)
+{
+	// 当前待测量位置 = 该侧别相别已测数量（0-based索引）:双联奇偶拆内侧/外侧，与测量回填逻辑一致
+	const QString strSide = ui.comboBox_2->currentText();
+	const QString strDira = ui.comboBox->currentText();
+	const bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	const int nIndex = GetMearDataArray(m_mapTicketMearData, strSide, strDira).size();
+	strHeader = strSide + " " + strDira;
+	if (bDouble)
+		strHeader += (nIndex % 2 == 0) ? QStringLiteral("内侧") : QStringLiteral("外侧");
+	nRow = bDouble ? (nIndex / 2) : nIndex;
+}
+
+void Insulator_Zero_Value_Detection_Robot::AddMeasureTableAlarm(const QString& strHeader, int nRow, const QString& strReason)
+{
+	// 把告警写入测量数据表格对应单元格:无数值格显示告警文本，有数值格标红+悬停提示
+	if (m_pModelDataWidget && nRow >= 0)
+		m_pModelDataWidget->setAlarm(strHeader, nRow, strReason);
 }
 
 // void Insulator_Zero_Value_Detection_Robot::NotifyProbeArrived()
@@ -2577,11 +2623,11 @@ void Insulator_Zero_Value_Detection_Robot::On_SaveMotorSpeed_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_SaveServoSpeed_Click()
 {
-    m_pConfig->m_memControlBoardConfig.m_cServoSpeed = ui.comboBox_4->currentIndex();
-    if (m_pDeviceLog)
-        m_pDeviceLog->WriteFormat("保存舵机速度:%d", (int)m_pConfig->m_memControlBoardConfig.m_cServoSpeed);
-    m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
-    QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("参数已保存"));
+	m_pConfig->m_memControlBoardConfig.m_cServoSpeed = ui.comboBox_4->currentIndex();
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("保存舵机速度:%d", (int)m_pConfig->m_memControlBoardConfig.m_cServoSpeed);
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+	QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("参数已保存"));
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_SaveRobotIp_Click()

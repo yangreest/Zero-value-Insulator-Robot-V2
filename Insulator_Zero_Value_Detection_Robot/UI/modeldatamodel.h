@@ -26,12 +26,16 @@ public:
     void setTableLayout(const QStringList &headers, int rowCount);
     // 根据表头内容查找列序号，未找到返回-1
     int columnIndex(const QString &header) const;
+    // 设置单元格测量告警（探针超时/测量超时/数据异常等）:无数值时显示告警文本,有值时数值标红并悬停提示
+    void setCellAlarm(int row, int col, const QString &alarm);
 
     void addMapping(const QString &color, const QRect &area);
     void clearMapping() { m_mapping.clear(); }
 
 private:
     QList<QList<qreal> *> m_data;
+    // 与m_data同构的告警文本:空串表示无告警
+    QList<QList<QString> *> m_alarms;
     QMultiHash<QString, QRect> m_mapping;
     QStringList m_headers;
     int m_columnCount;
