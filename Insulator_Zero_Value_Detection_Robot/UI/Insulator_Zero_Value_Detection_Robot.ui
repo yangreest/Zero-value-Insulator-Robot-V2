@@ -1395,7 +1395,7 @@ QPushButton:checked {
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>0</number>
+           <number>1</number>
           </property>
           <widget class="QWidget" name="stackedWidget_3Page1">
            <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -1666,7 +1666,7 @@ QTabBar::tab:disabled {
 }</string>
                </property>
                <property name="currentIndex">
-                <number>2</number>
+                <number>0</number>
                </property>
                <widget class="QWidget" name="tabWidget_2Page1">
                 <attribute name="title">
@@ -4898,6 +4898,32 @@ QPushButton:pressed
                 </property>
                 <property name="text">
                  <string>生成报告</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="pBPreviewReport">
+                <property name="styleSheet">
+                 <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                </property>
+                <property name="text">
+                 <string>预览报告</string>
                 </property>
                </widget>
               </item>

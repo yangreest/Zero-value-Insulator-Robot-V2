@@ -16,6 +16,7 @@
 #include <opencv2/opencv.hpp>
 #include <UI/NewTicketDialog.h>
 #include <UI/NewReportDialog.h>
+#include <UI/PreviewReportDialog.h>
 
 #include "UI/contentwidget.h"
 #include "UI/modeldatawidget.h"
@@ -60,6 +61,8 @@ private slots:
 	void On_SetFileName_Click();
 	void On_NewTicket_Click();
 	void On_NewReport_Click();
+	// 预览报告:弹窗展示当前工单的富文本报告,支持导出PDF
+	void On_PreviewReport_Click();
 	void On_DeleteTicket_Click();
 	void On_ChangeTicket_Click();
 	void On_LoadTicket_Click();
@@ -179,6 +182,14 @@ private:
 	std::string GenerateUniqueTicketId();
 	std::string GenerateUniqueReportId();
 
+	// ===== 报告生成（HTML 富文本模板 + PDF 导出）=====
+	// 读取报告模板文件（exe目录/ReportTemplate.html），缺失时返回内置默认模板
+	QString LoadReportTemplate();
+	// 用当前工单及其测量数据填充模板，生成报告 HTML
+	QString BuildReportHtml();
+	// 生成当前工单报告并导出 PDF 到默认目录，成功返回 true
+	bool GenerateCurrentTicketReport();
+
 	//自定义显示label
 	void SetVisibles(bool bVisible,int nSliceNum);
 
@@ -295,6 +306,11 @@ private:
 
 	NewReportDialog* newReportDialog;
 	NewTicketDialog* newTicketDialog;
+
+	// 预览报告弹窗（懒创建，复用）
+	PreviewReportDialog* m_pPreviewReportDialog = nullptr;
+	// 最近一次生成的报告 HTML（切换工单后清空，预览时为空则重新生成）
+	QString m_strLastReportHtml;
 
 	ContentWidget* m_activeWidget = nullptr;
 

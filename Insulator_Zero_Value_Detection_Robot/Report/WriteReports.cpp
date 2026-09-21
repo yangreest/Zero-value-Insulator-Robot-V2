@@ -1,11 +1,18 @@
 #include "WriteReports.h"
 
+#include <vector>
+
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <QStringList>
+#include <QTextDocument>
+#include <QFont>
+#include <QPdfWriter>
+#include <QPageSize>
+#include <QPageLayout>
 
 // XML 文本转义（数据含 < > & 时 Word 才能正常显示）
 QString CWriteReports::XmlEscape(const QString& strText)
@@ -317,4 +324,136 @@ QString CWriteReports::FillMearDataRows(const QString& strXml, const QJsonObject
 	// 6. 用新数据行替换原数据行范围，回填 document.xml
 	const QString strNewTbl = strTbl.left(nDataStart) + strNewRows + strTbl.mid(nDataEnd);
 	return strXml.left(mTbl.capturedStart()) + strNewTbl + strXml.mid(mTbl.capturedEnd());
+}
+
+// ===== HTML 富文本报告 =====
+
+// HTML 文本转义（数据含 < > & 时预览与 PDF 才能正常显示）
+QString CWriteReports::HtmlEscape(const QString& strText)
+{
+	QString strResult = strText;
+	strResult.replace('&', "&amp;");
+	strResult.replace('<', "&lt;");
+	strResult.replace('>', "&gt;");
+	return strResult;
+}
+
+// 填充 HTML 模板：将 ${key} 占位符替换为实际数据
+QString CWriteReports::FillHtmlTemplate(
+	const QString& strTemplate,
+	const QHash<QString, QString>& mapData)
+{
+	QString strResult = strTemplate;
+	for (auto it = mapData.constBegin(); it != mapData.constEnd(); ++it)
+		strResult.replace("${" + it.key() + "}", HtmlEscape(it.value()));
+	return strResult;
+}
+
+// 生成测量数据表 HTML（行=最大片数，列=侧别×相别，双联每相拆内/外侧）
+QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble)
+{
+	// 列描述:侧别 + 相别 + 内外侧(双联)，列序按 JSON 存入顺序（第一层侧别，第二层相别）
+	struct ColInfo
+	{
+		QString strSide;
+		QString strPhase;
+		QJsonArray arrData;
+		bool bOutside = false; // 双联:false=内侧 true=外侧
+	};
+	std::vector<ColInfo> vecCols;
+	int nRows = 0;
+	for (auto itSide = mapTicketMearData.constBegin(); itSide != mapTicketMearData.constEnd(); ++itSide)
+	{
+		const QJsonObject objPhase = itSide.value().toObject();
+		for (auto itPhase = objPhase.constBegin(); itPhase != objPhase.constEnd(); ++itPhase)
+		{
+			const QJsonArray arrData = itPhase.value().toArray();
+			if (bDouble)
+			{
+				vecCols.push_back({ itSide.key(), itPhase.key(), arrData, false });
+				vecCols.push_back({ itSide.key(), itPhase.key(), arrData, true });
+				nRows = qMax(nRows, static_cast<int>((arrData.size() + 1) / 2));
+			}
+			else
+			{
+				vecCols.push_back({ itSide.key(), itPhase.key(), arrData, false });
+				nRows = qMax(nRows, arrData.size());
+			}
+		}
+	}
+
+	QString strHtml = "<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\" width=\"100%\" style=\"border-collapse:collapse;\">";
+	// 表头:片号 + 各列(侧别+相别[+内/外侧])
+	strHtml += "<tr><td style=\"font-weight:bold; background-color:#f2f2f2; text-align:center;\">片号</td>";
+	for (const ColInfo& col : vecCols)
+	{
+		QString strHead = col.strSide + " " + col.strPhase;
+		if (bDouble)
+			strHead += (col.bOutside ? QStringLiteral("外侧") : QStringLiteral("内侧"));
+		strHtml += "<td style=\"font-weight:bold; background-color:#f2f2f2; text-align:center;\">"
+			+ HtmlEscape(strHead) + "</td>";
+	}
+	strHtml += "</tr>";
+
+	if (nRows <= 0)
+	{
+		// 无测量数据:占位行
+		strHtml += "<tr><td colspan=\"" + QString::number(vecCols.size() + 1)
+			+ "\" style=\"text-align:center;\">暂无测量数据</td></tr>";
+	}
+	else
+	{
+		for (int n = 1; n <= nRows; ++n)
+		{
+			strHtml += "<tr><td style=\"text-align:center;\">" + QString::number(n) + "</td>";
+			for (const ColInfo& col : vecCols)
+			{
+				QString strValue;
+				if (bDouble)
+				{
+					const int idx = 2 * (n - 1) + (col.bOutside ? 1 : 0);
+					if (idx < col.arrData.size())
+						strValue = QString::number(col.arrData[idx].toDouble());
+				}
+				else if (n - 1 < col.arrData.size())
+				{
+					strValue = QString::number(col.arrData[n - 1].toDouble());
+				}
+				strHtml += "<td style=\"text-align:center;\">" + strValue + "</td>";
+			}
+			strHtml += "</tr>";
+		}
+	}
+	strHtml += "</table>";
+	return strHtml;
+}
+
+// 将 HTML 富文本导出为 PDF（QTextDocument + QPdfWriter，A4，输出目录自动创建）
+bool CWriteReports::ExportHtmlToPdf(const QString& strHtml, const QString& strPdfPath)
+{
+	if (strHtml.isEmpty() || strPdfPath.isEmpty())
+	{
+		qWarning() << "HTML内容或PDF路径为空";
+		return false;
+	}
+
+	// 输出目录不存在时自动创建
+	const QString strOutputDir = QFileInfo(strPdfPath).absolutePath();
+	if (!strOutputDir.isEmpty() && !QDir().mkpath(strOutputDir))
+	{
+		qWarning() << "创建输出目录失败:" << strOutputDir;
+		return false;
+	}
+
+	QTextDocument doc;
+	// 中文默认字体，防止个别系统缺字体导致 PDF 乱码
+	doc.setDefaultFont(QFont(QStringLiteral("Microsoft YaHei"), 10));
+	doc.setHtml(strHtml);
+
+	QPdfWriter writer(strPdfPath);
+	writer.setPageSize(QPageSize(QPageSize::A4));
+	writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout::Millimeter);
+	writer.setResolution(96);
+	doc.print(&writer);
+	return true;
 }

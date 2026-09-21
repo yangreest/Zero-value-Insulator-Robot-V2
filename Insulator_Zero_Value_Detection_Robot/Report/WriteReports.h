@@ -60,7 +60,24 @@ public:
 		const std::string& strOutputPath,
 		const QJsonObject& mapTicketMearData);
 
+	// ===== HTML 富文本报告（Qt QTextDocument 子集，弹窗预览与导出 PDF 通用）=====
+
+	// 填充 HTML 模板：将 ${key} 占位符替换为实际数据（值做 HTML 转义）
+	static QString FillHtmlTemplate(
+		const QString& strTemplate,
+		const QHash<QString, QString>& mapData);
+
+	// 生成测量数据表 HTML。mapTicketMearData 结构: { 侧别: { 相别: [值...] } }
+	// bDouble: 双联时每相数组按[内侧,外侧]成对存放，拆成内/外两列；单联每相一列
+	// 行数 = 各相数组最大片数（双联 ceil(size/2)），无数据时输出"暂无测量数据"占位行
+	static QString BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble);
+
+	// 将 HTML 富文本导出为 PDF（QTextDocument + QPdfWriter，A4，输出目录自动创建）
+	static bool ExportHtmlToPdf(const QString& strHtml, const QString& strPdfPath);
+
 private:
+	// HTML 文本转义（数据含 < > & 时预览与 PDF 才能正常显示）
+	static QString HtmlEscape(const QString& strText);
 	// XML 文本转义（数据含 < > & 时 Word 才能正常显示）
 	static QString XmlEscape(const QString& strText);
 

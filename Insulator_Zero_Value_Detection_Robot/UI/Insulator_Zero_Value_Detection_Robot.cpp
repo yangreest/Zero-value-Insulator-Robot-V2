@@ -111,6 +111,8 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 	setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
 
 	ui.label_22->setVisible(false);
+	// 隐藏"检测报告"导航入口（报告改为工单页直接生成 + 弹窗预览）
+	ui.pBreport->setVisible(false);
 	// label_9显示摄像头画面,设置缩放以适应容器大小,避免图片过大撑出界面
 	ui.label_9->setScaledContents(true);
 	ui.labelTicketLineName->setText("");
@@ -274,6 +276,7 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 
 	newTicketDialog = new NewTicketDialog();
 	newReportDialog = new NewReportDialog();
+	m_pPreviewReportDialog = new PreviewReportDialog();
 
 	// 获取设备信息
 
@@ -356,6 +359,7 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pushButton_4, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Record_Click);
 	connect(ui.pBNewTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click);
 	connect(ui.pBNewReport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_NewReport_Click);
+	connect(ui.pBPreviewReport, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_PreviewReport_Click);
 
 	connect(ui.pBDeleteTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click);
 	connect(ui.pBChangeTicket, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ChangeTicket_Click);
@@ -1924,38 +1928,164 @@ void Insulator_Zero_Value_Detection_Robot::On_NewTicket_Click()
 void Insulator_Zero_Value_Detection_Robot::On_NewReport_Click()
 {
 	if (m_pDeviceLog)
-		m_pDeviceLog->Write("新建报告,工单ID:" + m_CurrentTicketConfig.m_strTicketId);
-	//获取当前工单的ID
-	std::string strTicketId = m_CurrentTicketConfig.m_strTicketId;
-	// 判断是否存在当前工单
-	if(strTicketId.empty())
+		m_pDeviceLog->Write("生成报告,工单ID:" + m_CurrentTicketConfig.m_strTicketId);
+	// 直接用当前工单及其测量数据生成报告（HTML富文本），并导出PDF到默认目录
+	GenerateCurrentTicketReport();
+}
+
+// 读取报告模板文件（exe目录/ReportTemplate.html），缺失时返回内置默认模板
+QString Insulator_Zero_Value_Detection_Robot::LoadReportTemplate()
+{
+	// 模板与Config.xml同目录，Release下GetAbsolutePath解析到exe目录
+	const QString strTemplatePath = QString::fromStdString(WHSD_Tools::GetAbsolutePath("ReportTemplate.html"));
+	QFile file(strTemplatePath);
+	if (file.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		const QString strTemplate = QString::fromUtf8(file.readAll());
+		file.close();
+		if (!strTemplate.isEmpty())
+			return strTemplate;
+	}
+
+	// 模板文件缺失：使用内置默认模板兜底
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("报告模板缺失,使用内置默认模板:" + strTemplatePath.toStdString());
+	return QStringLiteral(
+		"<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>"
+		"<h1 style=\"text-align:center;\">绝缘子零值检测报告</h1>"
+		"<p style=\"text-align:center;\">报告编号：${ticketId}</p>"
+		"<h3>一、基本信息</h3>"
+		"<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\" width=\"100%\" style=\"border-collapse:collapse;\">"
+		"<tr><td style=\"font-weight:bold; background-color:#f2f2f2;\">线路名称</td><td>${lineName}</td>"
+		"<td style=\"font-weight:bold; background-color:#f2f2f2;\">杆塔号</td><td>${poleNumber}</td></tr>"
+		"<tr><td style=\"font-weight:bold; background-color:#f2f2f2;\">串型</td><td>${bunchType}</td>"
+		"<td style=\"font-weight:bold; background-color:#f2f2f2;\">绝缘子片数</td><td>${sliceNum}</td></tr>"
+		"<tr><td style=\"font-weight:bold; background-color:#f2f2f2;\">回路数</td><td>${loopType}</td>"
+		"<td style=\"font-weight:bold; background-color:#f2f2f2;\">电流类型</td><td>${currentType}</td></tr>"
+		"<tr><td style=\"font-weight:bold; background-color:#f2f2f2;\">检测单位</td><td>${detectionUnit}</td>"
+		"<td style=\"font-weight:bold; background-color:#f2f2f2;\">检测人员</td><td>${detectionPerson}</td></tr>"
+		"<tr><td style=\"font-weight:bold; background-color:#f2f2f2;\">开始时间</td><td>${startTime}</td>"
+		"<td style=\"font-weight:bold; background-color:#f2f2f2;\">结束时间</td><td>${endTime}</td></tr>"
+		"</table>"
+		"<h3>二、测量数据（MΩ）</h3>"
+		"${mearTable}"
+		"<h3>三、检测结论</h3>"
+		"<p>${conclusion}</p>"
+		"<h3>四、备注</h3>"
+		"<p>${remark}</p>"
+		"</body></html>");
+}
+
+// 用当前工单及其测量数据填充模板，生成报告 HTML
+QString Insulator_Zero_Value_Detection_Robot::BuildReportHtml()
+{
+	const CNewTicketConfig& ticket = m_CurrentTicketConfig;
+
+	QHash<QString, QString> mapData;
+	mapData["ticketId"] = QString::fromStdString(ticket.m_strTicketId);
+	mapData["lineName"] = QString::fromStdString(ticket.m_strLineName);
+	mapData["poleNumber"] = QString::fromStdString(ticket.m_strPoleNumber);
+	mapData["bunchType"] = QString::fromStdString(CNewTicketConfig::m_vecBunchType(ticket.m_eBunchType));
+	mapData["sliceNum"] = QString::number(ticket.m_wInsulatorSliceNum);
+	mapData["loopType"] = QString::fromStdString(CNewTicketConfig::m_vecLoopType(ticket.m_eLoopType));
+	mapData["currentType"] = QString::fromStdString(CNewTicketConfig::m_vecCurrentType(ticket.m_eCurrentType));
+	mapData["detectionUnit"] = QString::fromStdString(ticket.m_strDetectionUnit);
+	mapData["detectionPerson"] = QString::fromStdString(ticket.m_strDetectionPerson);
+	mapData["startTime"] = QString::fromStdString(ticket.m_strStartTime);
+	mapData["endTime"] = QString::fromStdString(ticket.m_strEndTime);
+	mapData["remark"] = QString::fromStdString(ticket.m_strRemark);
+
+	const bool bDouble = (ticket.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	mapData["mearTable"] = CWriteReports::BuildMearTableHtml(m_mapTicketMearData, bDouble);
+
+	// 检测结论：统计低于绝缘阈值的测量值个数
+	const double dThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
+	int nLowCount = 0;
+	for (auto itSide = m_mapTicketMearData.constBegin(); itSide != m_mapTicketMearData.constEnd(); ++itSide)
+	{
+		const QJsonObject objPhase = itSide.value().toObject();
+		for (auto itPhase = objPhase.constBegin(); itPhase != objPhase.constEnd(); ++itPhase)
+		{
+			const QJsonArray arrData = itPhase.value().toArray();
+			for (const QJsonValue& value : arrData)
+				if (value.toDouble() < dThreshold)
+					++nLowCount;
+		}
+	}
+	mapData["conclusion"] = (nLowCount > 0)
+		? QStringLiteral("本次检测共 %1 个测量值低于绝缘阈值（%2 MΩ），存在零值/低值绝缘子。")
+			.arg(nLowCount).arg(dThreshold)
+		: QStringLiteral("本次检测全部测量值均不低于绝缘阈值（%1 MΩ），未发现零值/低值绝缘子。").arg(dThreshold);
+
+	return CWriteReports::FillHtmlTemplate(LoadReportTemplate(), mapData);
+}
+
+// 生成当前工单报告并导出 PDF 到默认目录，成功返回 true
+bool Insulator_Zero_Value_Detection_Robot::GenerateCurrentTicketReport()
+{
+	if (m_CurrentTicketConfig.m_strTicketId.empty())
+	{
+		QMessageBox::information(this, "提示", "请先加载工单");
+		return false;
+	}
+
+	// 1. 用当前工单数据填充模板，生成报告 HTML
+	m_strLastReportHtml = BuildReportHtml();
+
+	// 2. 导出 PDF 到默认目录 <exe目录>/报告/<线路>_<杆塔>_<报告编号>.pdf
+	const QString strDir = QDir(QString::fromStdString(WHSD_Tools::GetExeDirectory())).filePath(QStringLiteral("报告"));
+	const QString strFileName = QString("%1_%2_%3.pdf")
+		.arg(QString::fromStdString(m_CurrentTicketConfig.m_strLineName),
+			QString::fromStdString(m_CurrentTicketConfig.m_strPoleNumber),
+			QString::fromStdString(m_CurrentTicketConfig.m_strTicketId));
+	const QString strPdfPath = QDir(strDir).filePath(strFileName);
+	if (!CWriteReports::ExportHtmlToPdf(m_strLastReportHtml, strPdfPath))
+	{
+		QMessageBox::warning(this, "错误", QString("报告生成失败:\n%1").arg(strPdfPath));
+		return false;
+	}
+
+	// 3. 更新"已生成报告"标志并持久化
+	m_CurrentTicketConfig.m_bGenerateReport = true;
+	for (auto& ticket : m_pConfig->m_vecNewTicketConfig)
+	{
+		if (ticket.m_strTicketId == m_CurrentTicketConfig.m_strTicketId)
+		{
+			ticket.m_bGenerateReport = true;
+			break;
+		}
+	}
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("生成报告:" + strPdfPath.toStdString());
+	QMessageBox::information(this, "提示", QString("报告生成成功:\n%1").arg(strPdfPath));
+	return true;
+}
+
+// 预览报告：弹窗展示当前工单的富文本报告，支持导出 PDF
+void Insulator_Zero_Value_Detection_Robot::On_PreviewReport_Click()
+{
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("预览报告");
+	if (m_CurrentTicketConfig.m_strTicketId.empty())
 	{
 		QMessageBox::information(this, "提示", "请先加载工单");
 		return;
 	}
-	if (m_CurrentTicketConfig.m_bGenerateReport)
-	{
-		// 已存在报告,是否需要重新生成？
-		QMessageBox::StandardButton reply = QMessageBox::question(this, "提示", "已存在报告,是否需要重新生成？", QMessageBox::Yes | QMessageBox::No);
-		if (reply == QMessageBox::Yes)
-		{
-			// 删除报告
-			for (int i = 0; i < ui.tableWidget_3->rowCount(); i++)
-			{
-				QTableWidgetItem* item = ui.tableWidget_3->item(i, 1);
-				if (item && item->data(Qt::UserRole).value<CNewReportConfig>().m_strReportId == strTicketId) {
-					ui.tableWidget_3->removeRow(i);
-					break;
-				}
-			}
-		}
-		else  return;
-	}
-	CNewReportConfig m_memNewReportConfig;
-	m_memNewReportConfig.m_strReportId = strTicketId;
-	newReportDialog->SetReport(m_memNewReportConfig);
+	// 尚未生成过报告时，先按当前数据生成；已生成则复用最近一次内容
+	if (m_strLastReportHtml.isEmpty())
+		m_strLastReportHtml = BuildReportHtml();
 
-	newReportDialog->show();
+	const QString strDefaultName = QString("%1_%2_%3")
+		.arg(QString::fromStdString(m_CurrentTicketConfig.m_strLineName),
+			QString::fromStdString(m_CurrentTicketConfig.m_strPoleNumber),
+			QString::fromStdString(m_CurrentTicketConfig.m_strTicketId));
+	if (m_pPreviewReportDialog)
+	{
+		m_pPreviewReportDialog->SetReportHtml(m_strLastReportHtml, strDefaultName);
+		m_pPreviewReportDialog->show();
+	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_DeleteTicket_Click()
@@ -2012,6 +2142,8 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 	m_CurrentTicketConfig = ui.tableWidget_2->item(row, 0)->data(Qt::UserRole).value<CNewTicketConfig>();
 
 	m_mapTicketMearData = m_CurrentTicketConfig.m_mapTicketMearData;
+	// 切换工单后清空上一次生成的报告，预览时按当前工单重新生成
+	m_strLastReportHtml.clear();
 
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("加载工单:" + m_CurrentTicketConfig.m_strLineName + "_" + m_CurrentTicketConfig.m_strPoleNumber + " ID:" + m_CurrentTicketConfig.m_strTicketId);
@@ -2749,14 +2881,10 @@ void Insulator_Zero_Value_Detection_Robot::On_mear_Click()
 
 void Insulator_Zero_Value_Detection_Robot::On_WriteReport_Click()
 {
-	QHash<QString, QString> data;
-	data["name"] = "张三";
-	data["dept"] = "研发部 <嵌入式> & 测试";  // 特殊字符自动转义
-	data["phone"] = "138-0000-0000";
-
-	QString temPath = "D:\\xz\\template.docx";
-	QString output = "D:\\xz\\output.docx";
-	CWriteReports::FillDocxTemplate(temPath, output, data);
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("按钮操作:生成报告");
+	// 与工单页"生成报告"一致：直接用当前工单测量数据生成报告
+	GenerateCurrentTicketReport();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int index)
