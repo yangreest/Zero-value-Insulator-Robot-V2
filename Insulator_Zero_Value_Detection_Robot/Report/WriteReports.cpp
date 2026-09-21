@@ -412,10 +412,11 @@ QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, 
 				if (bDouble)
 				{
 					const int idx = 2 * (n - 1) + (col.bOutside ? 1 : 0);
-					if (idx < col.arrData.size())
+					// 已删除的点位为null空位:输出空格,保持片号对齐不错位
+					if (idx < col.arrData.size() && !col.arrData[idx].isNull())
 						strValue = QString::number(col.arrData[idx].toDouble());
 				}
-				else if (n - 1 < col.arrData.size())
+				else if (n - 1 < col.arrData.size() && !col.arrData[n - 1].isNull())
 				{
 					strValue = QString::number(col.arrData[n - 1].toDouble());
 				}

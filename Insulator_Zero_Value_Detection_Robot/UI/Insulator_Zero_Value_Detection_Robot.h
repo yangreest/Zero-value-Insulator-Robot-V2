@@ -69,6 +69,10 @@ private slots:
 	void On_DeleteReport_Click();
 	void On_Test_Click();
 	void On_Retest_Click();
+	// 删除选中点位的测量数据（仅清空该点位，后续数据保留原位）
+	void On_DeletePoint_Click();
+	// 从选中点位开始测量（设置起始游标并立即启动测量流程，新值从该点覆盖写入）
+	void On_StartFromPoint_Click();
 
 
 	// 保存电机速度
@@ -222,6 +226,14 @@ private:
 	// 把测量告警同步写入测量数据表格对应单元格（探针超时/测量超时/数据异常等）
 	void AddMeasureTableAlarm(const QString& strHeader, int nRow, const QString& strReason);
 
+	// ===== 测量点位删除/起点测量 =====
+	// 计算指定侧别/相别的下一个写入下标：起始游标>=0时返回游标；否则返回首个null空位下标；无空位返回数组长度
+	int GetMearWriteIndex(const QString& strSide, const QString& strDira);
+	// 解析测量表格当前选中单元格→侧别/相别/片号(1-based)，未选中或无效返回false
+	bool GetSelectedPoint(QString& strSide, QString& strPhase, int& nSliceNo);
+	// 检测串状态页中指定片号的内/外侧状态灯恢复默认底色
+	void ResetSliceStatusLabel(int nSliceNo);
+
 	// ===== 告警面板 =====
 	// 在告警表(tableWidget)首行插入一条告警(时间/类型/位置/详情/状态),仅UI线程调用
 	void AddAlarm(const QString& strType, const QString& strLocation, const QString& strDetail);
@@ -319,6 +331,10 @@ private:
 
 	// 测量数据（JSON格式）:第一层key为侧别,第二层key为相别/方向,值为该相测量值数组(QJsonArray)
 	QJsonObject m_mapTicketMearData;
+
+	// 起始测量游标（-1=未设置，跟随首个空位/末尾；>=0时测量值写入该下标并递增）
+	// UI线程设置/重置,协议线程写入测量值时读取并递增,故用原子变量
+	std::atomic<int> m_nMearStartIndex{ -1 };
 
 	CNewTicketConfig m_CurrentTicketConfig;
 

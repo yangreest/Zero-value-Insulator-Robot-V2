@@ -654,6 +654,48 @@ background-color:#2563eb;</string>
                  </property>
                 </widget>
                </item>
+               <item>
+                <widget class="QPushButton" name="pBDeletePoint">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>35</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">border-radius:8px;
+
+background-color:#ef4444;</string>
+                 </property>
+                 <property name="text">
+                  <string>删除点位</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pBStartFromPoint">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>35</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">border-radius:8px;
+
+background-color:#f59e0b;</string>
+                 </property>
+                 <property name="text">
+                  <string>从该点测量</string>
+                 </property>
+                </widget>
+               </item>
               </layout>
              </item>
             </layout>

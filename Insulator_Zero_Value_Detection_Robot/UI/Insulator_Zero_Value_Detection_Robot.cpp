@@ -53,6 +53,32 @@ static void AppendMearData(QJsonObject& root, const QString& strSide, const QStr
 	SetMearDataArray(root, strSide, strDira, arrData);
 }
 
+// 向指定侧别/相别指定下标写入一个测量值：下标在数组内则覆盖，等于数组长度则追加；
+// 起点超出已有数据时用null补齐空位，保持片号位置对应
+static void SetMearDataAt(QJsonObject& root, const QString& strSide, const QString& strDira, int nIndex, double value)
+{
+	QJsonArray arrData = GetMearDataArray(root, strSide, strDira);
+	if (nIndex < 0)
+		return;
+	while (arrData.size() < nIndex)
+		arrData.append(QJsonValue::Null);
+	if (nIndex == arrData.size())
+		arrData.append(value);
+	else
+		arrData[nIndex] = value;
+	SetMearDataArray(root, strSide, strDira, arrData);
+}
+
+// 清空指定侧别/相别指定下标的测量值（置Null空位，后续数据保持原位不动）
+static void RemoveMearDataAt(QJsonObject& root, const QString& strSide, const QString& strDira, int nIndex)
+{
+	QJsonArray arrData = GetMearDataArray(root, strSide, strDira);
+	if (nIndex < 0 || nIndex >= arrData.size())
+		return;
+	arrData[nIndex] = QJsonValue::Null;
+	SetMearDataArray(root, strSide, strDira, arrData);
+}
+
 // ===== X值单点定标流程参数（对应《单点定标协议与流程 V1.0》）=====
 // 0x0F在触发后约3.2秒主动上报，文档要求等待超时≥ 5秒
 static const int CALIB_MEASURE_TIMEOUT_MS = 6000;
@@ -373,6 +399,8 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 
 	connect(ui.pBTest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Test_Click);
 	connect(ui.pBRetest, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Retest_Click);
+	connect(ui.pBDeletePoint, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_DeletePoint_Click);
+	connect(ui.pBStartFromPoint, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_StartFromPoint_Click);
 
 	connect(ui.pushButton_14, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_forword_Click);// 前进
 	connect(ui.pushButton_15, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_backward_Click);
@@ -729,7 +757,12 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 
 	QString strSide = ui.comboBox_2->currentText();
 	QString strDira = ui.comboBox->currentText();
-	AppendMearData(m_mapTicketMearData, strSide, strDira, value);
+	// 写入下标:起始游标>=0时写游标位置(覆盖写入);否则写入首个null空位;无空位则追加到末尾
+	int nWriteIndex = GetMearWriteIndex(strSide, strDira);
+	SetMearDataAt(m_mapTicketMearData, strSide, strDira, nWriteIndex, value);
+	// 起始游标模式:写入后游标递增,下一拍写入下一片(回调在协议线程,游标为原子变量)
+	if (m_nMearStartIndex >= 0)
+		m_nMearStartIndex++;
 
 	// 起止时间自动打点（问题1.3）:首次记录到测量值时置开始时间,之后每次刷新结束时间
 	QString strNow = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
@@ -756,45 +789,43 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 		RefreshCurrentTicketTimeColumns();
 		}, Qt::QueuedConnection);
 
-	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
 	bool visible = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 
-	// 每获得一个测量值,填充到表格对应列的空单元格并绘制曲线（回调在协议线程,切到UI线程执行）
-	// 双联时每相拆为两列:奇数次测量为内侧,偶数次为外侧
+	// 每获得一个测量值,填充到表格对应列指定行并绘制曲线（回调在协议线程,切到UI线程执行）
+	// 双联时每相拆为两列:偶数下标为内侧,奇数下标为外侧
 	// 表头统一加入侧别维度,与建表列头/复测删除保持一致（问题2.1）
+	int nSliceNo = visible ? (nWriteIndex / 2 + 1) : (nWriteIndex + 1);
 	QString strHeader = strSide + " " + strDira;
 	if (visible)
-		strHeader += (vecData.size() % 2 == 1) ? QStringLiteral("内侧") : QStringLiteral("外侧");
+		strHeader += (nWriteIndex % 2 == 0) ? QStringLiteral("内侧") : QStringLiteral("外侧");
 	ModelDataWidget* pModelDataWidget = m_pModelDataWidget;
 	double dValue = value;
-	QMetaObject::invokeMethod(this, [pModelDataWidget, strHeader, dValue]() {
+	int nRow = visible ? (nWriteIndex / 2) : nWriteIndex;
+	QMetaObject::invokeMethod(this, [pModelDataWidget, strHeader, nRow, dValue]() {
 		if (pModelDataWidget)
-			pModelDataWidget->appendValue(strHeader, dValue);
+			pModelDataWidget->setValueAt(strHeader, nRow, dValue);
 		}, Qt::QueuedConnection);
 
-	// 零值/低值告警（问题3）:阻值低于阈值时记录告警,片号取该侧别相别当前序号（切到UI线程）
+	// 零值/低值告警（问题3）:阻值低于阈值时记录告警,片号取写入下标对应片号（切到UI线程）
 	uint16_t wThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
 	if (value < wThreshold)
 	{
-		int nSliceNo = visible
-			? ((vecData.size() % 2 == 1) ? static_cast<int>(vecData.size() / 2 + 1) : static_cast<int>(vecData.size() / 2))
-			: static_cast<int>(vecData.size());
 		QString strLocation = strSide + " " + strDira + QStringLiteral(" 第%1片").arg(nSliceNo);
 		QString strDetail = QStringLiteral("阻值 %1 MΩ 低于阈值 %2 MΩ").arg(static_cast<double>(value), 0, 'f', 3).arg(wThreshold);
 		// 同步写入测量数据表格:该格数值标红+悬停显示告警详情
-		QMetaObject::invokeMethod(this, [this, pModelDataWidget, strHeader, nSliceNo, strLocation, strDetail]() {
+		QMetaObject::invokeMethod(this, [this, pModelDataWidget, strHeader, nRow, strLocation, strDetail]() {
 			AddAlarm(QStringLiteral("零值/低值"), strLocation, strDetail);
 			if (pModelDataWidget)
-				pModelDataWidget->setAlarm(strHeader, nSliceNo - 1, strDetail);
+				pModelDataWidget->setAlarm(strHeader, nRow, strDetail);
 			}, Qt::QueuedConnection);
 	}
 
 	if (visible) // 双联
 	{
-		if (vecData.size() % 2 == 1)
+		if (nWriteIndex % 2 == 0)
 		{
-			// 奇数是内侧
-			QString strName = QString("labelInside%1").arg(vecData.size() / 2 + 1);
+			// 偶数下标是内侧
+			QString strName = QString("labelInside%1").arg(nSliceNo);
 			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 			if (!label)return;
 			if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold<=value)
@@ -809,8 +840,8 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 		}
 		else
 		{
-			// 偶数是外侧
-			QString strName = QString("labelOutside%1").arg(vecData.size() / 2);
+			// 奇数下标是外侧
+			QString strName = QString("labelOutside%1").arg(nSliceNo);
 			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 			if (!label)return;
 			if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold<=value)
@@ -825,8 +856,8 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 	}
 	else //单联
 	{
-		// 奇数是内侧
-		QString strName = QString("labelInside%1").arg(vecData.size());
+		// 单联只有内侧
+		QString strName = QString("labelInside%1").arg(nSliceNo);
 		QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 		if (!label)return;
 		if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold<=value)
@@ -1893,9 +1924,11 @@ QString Insulator_Zero_Value_Detection_Robot::GetMeasureImageFileName(bool bInsi
 	QString strDir = QDir::cleanPath(strRoot + "/" + strTicket + "_" + strPole + "/" + strPhase);
 	QDir().mkpath(strDir);
 
-	// 序号:同一相每完成一次测量追加一对内/外侧数据,当前侧序号 = 已有对数 + 1（重测后序号自动回退）
+	// 序号:按真实写入下标计算（起始游标/空位回填时与片号一致;正常追加时=已有对数+1,重测后序号自动回退）
 	QString strSide = ui.comboBox_2->currentText();
-	int nSeq = GetMearDataArray(m_mapTicketMearData, strSide, strPhase).size() / 2 + 1;
+	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	int nWriteIndex = GetMearWriteIndex(strSide, strPhase);
+	int nSeq = bDouble ? (nWriteIndex / 2 + 1) : (nWriteIndex + 1);
 	QString strSideName = bInside ? QStringLiteral("内测") : QStringLiteral("外侧");
 
 	// 文件名:内测/外侧_序号_时间（含毫秒防重名）
@@ -2200,11 +2233,14 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 				const QJsonArray vecData = itDira.value().toArray();
 				for (int i = 0; i < vecData.size(); ++i)
 				{
-					// 历史数据回填:表头同样加侧别前缀,与新列头一致（问题2.1）
+					// 已删除的点位为null空位:跳过,后续数据按原行回填不错位
+					if (vecData[i].isNull())
+						continue;
+					// 历史数据回填:表头同样加侧别前缀,与新列头一致（问题2.1）;按行精确回填
 					QString strHeader = itSide.key() + " " + strDira;
 					if (bDouble)
 						strHeader += (i % 2 == 0) ? QStringLiteral("内侧") : QStringLiteral("外侧");
-					m_pModelDataWidget->appendValue(strHeader, vecData[i].toDouble());
+					m_pModelDataWidget->setValueAt(strHeader, bDouble ? (i / 2) : i, vecData[i].toDouble());
 				}
 			}
 		}
@@ -2214,6 +2250,10 @@ void Insulator_Zero_Value_Detection_Robot::On_LoadTicket_Click()
 	ui.comboBox_2->setEnabled(true);
 	ui.pBTest->setEnabled(true);
 	ui.pBRetest->setEnabled(true);
+	ui.pBDeletePoint->setEnabled(true);
+	ui.pBStartFromPoint->setEnabled(true);
+	// 新工单重置起始测量游标（跟随空位/末尾）
+	m_nMearStartIndex = -1;
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_DeleteReport_Click()
@@ -2257,11 +2297,11 @@ void Insulator_Zero_Value_Detection_Robot::On_Test_Click()
 		return;
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
-	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
 	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 	// 双联每片含内/外侧两个值,上限为2×片数;单联上限为片数
+	// 以真实写入下标判断:存在已删除的空位时仍可重测该空位
 	int nMaxCount = bDouble ? (2 * m_CurrentTicketConfig.m_wInsulatorSliceNum) : m_CurrentTicketConfig.m_wInsulatorSliceNum;
-	if (vecData.size() >= nMaxCount)
+	if (GetMearWriteIndex(strSide, strDira) >= nMaxCount)
 	{
 		QMessageBox::information(this, "提示", "请 换相 或换 号侧 ！");
 		return;
@@ -2414,11 +2454,11 @@ void Insulator_Zero_Value_Detection_Robot::AbortMeasure(const QString& strReason
 
 void Insulator_Zero_Value_Detection_Robot::CalcPendingCell(QString& strHeader, int& nRow)
 {
-	// 当前待测量位置 = 该侧别相别已测数量（0-based索引）:双联奇偶拆内侧/外侧，与测量回填逻辑一致
+	// 当前待测量位置 = 真实写入下标（起始游标/首个null空位/末尾，0-based索引）:双联奇偶拆内侧/外侧，与测量回填逻辑一致
 	const QString strSide = ui.comboBox_2->currentText();
 	const QString strDira = ui.comboBox->currentText();
 	const bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
-	const int nIndex = GetMearDataArray(m_mapTicketMearData, strSide, strDira).size();
+	const int nIndex = GetMearWriteIndex(strSide, strDira);
 	strHeader = strSide + " " + strDira;
 	if (bDouble)
 		strHeader += (nIndex % 2 == 0) ? QStringLiteral("内侧") : QStringLiteral("外侧");
@@ -2491,6 +2531,8 @@ void Insulator_Zero_Value_Detection_Robot::SetMeasureUiEnabled(bool bEnable)
 {
 	ui.pBTest->setEnabled(bEnable);
 	ui.pBRetest->setEnabled(bEnable);
+	ui.pBDeletePoint->setEnabled(bEnable);
+	ui.pBStartFromPoint->setEnabled(bEnable);
 	ui.comboBox->setEnabled(bEnable);
 	ui.comboBox_2->setEnabled(bEnable);
 	// 行走/探针/测量等手动操作按钮
@@ -2699,11 +2741,24 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 
 	bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
 
+	// 找最后一个非空(非null)测量值下标:删除点位产生的null空位跳过,保证复检删的是真实最后一点
+	int nLastIndex = -1;
+	for (int i = vecData.size() - 1; i >= 0; i--)
+	{
+		if (!vecData[i].isNull())
+		{
+			nLastIndex = i;
+			break;
+		}
+	}
+	if (nLastIndex < 0)
+		return;
+
 	if (bDouble)
 	{
 		// 双联复测:去除最近一对内/外侧测量值,再重测两次（内一次,外一次）
-		// 偶数个时最近一对完整（内+外）,各删一个;奇数个时最近外侧缺失（流程中断）,只删最近内侧,复测后仍保持成对
-		bool bRemoveOutside = (vecData.size() % 2 == 0);
+		// 最后一个非空为奇数下标(外侧)时最近一对完整（内+外）;偶数下标(内侧)时最近外侧缺失（流程中断）,只删最近内侧
+		bool bRemoveOutside = (nLastIndex % 2 == 1);
 		if (m_pDeviceLog)
 			m_pDeviceLog->Write(std::string("重测（双联）:删除最近") + (bRemoveOutside ? "一对内/外侧测量值" : "一个内侧测量值")
 				+ ",侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString() + ",重测内外侧各一次");
@@ -2715,10 +2770,10 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 			if (bRemoveOutside)
 				m_pModelDataWidget->removeLastValue(strSide + " " + strDira + QStringLiteral("外侧"));
 		}
-		for (int i = 0; i < (bRemoveOutside ? 2 : 1) && !vecData.isEmpty(); i++)
-			vecData.removeLast();
-		// 回写删除后的测量值数组
-		SetMearDataArray(m_mapTicketMearData, strSide, strDira, vecData);
+		// 置null清空对应下标（保留空位,后续数据原位不动）
+		RemoveMearDataAt(m_mapTicketMearData, strSide, strDira, nLastIndex);
+		if (bRemoveOutside)
+			RemoveMearDataAt(m_mapTicketMearData, strSide, strDira, nLastIndex - 1);
 
 		// 重新执行完整双联测量流程:探针指向内测,到位后执行第一次测量,后续由OnMeasureResult推进
 		SetMeasureUiEnabled(false);
@@ -2736,9 +2791,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 		// 同步删除表格/曲线中最近一个测量值,等待复测值回填（表头含侧别前缀,单联无内/外侧后缀）
 		if (m_pModelDataWidget)
 			m_pModelDataWidget->removeLastValue(strSide + " " + strDira);
-		vecData.removeLast();
-		// 回写删除后的测量值数组
-		SetMearDataArray(m_mapTicketMearData, strSide, strDira, vecData);
+		RemoveMearDataAt(m_mapTicketMearData, strSide, strDira, nLastIndex);
 
 		// 探针指向内测,到位后执行一次测量,后续由OnMeasureResult推进（单联收到结果即结束）
 		SetMeasureUiEnabled(false);
@@ -2747,6 +2800,182 @@ void Insulator_Zero_Value_Detection_Robot::On_Retest_Click()
 			QStringLiteral("重测:探针指向内测,等待到位..."),
 			QStringLiteral("正在执行重测测量（内测）,等待结果..."));
 	}
+}
+
+int Insulator_Zero_Value_Detection_Robot::GetMearWriteIndex(const QString& strSide, const QString& strDira)
+{
+	// 起始游标>=0:覆盖写入游标位置;否则写入首个null空位(删除点位产生);无空位则追加到末尾
+	int nCursor = m_nMearStartIndex.load();
+	if (nCursor >= 0)
+		return nCursor;
+	const QJsonArray arrData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
+	for (int i = 0; i < arrData.size(); i++)
+	{
+		if (arrData[i].isNull())
+			return i;
+	}
+	return arrData.size();
+}
+
+bool Insulator_Zero_Value_Detection_Robot::GetSelectedPoint(QString& strSide, QString& strPhase, int& nSliceNo)
+{
+	if (m_pModelDataWidget == nullptr)
+		return false;
+	QString strHeader;
+	int nRow = -1;
+	if (!m_pModelDataWidget->getSelectedCell(strHeader, nRow))
+		return false;
+	// 表头格式:侧别 + " " + 相别 [+ 内侧/外侧]（侧别/相别均无空格）
+	const bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	if (bDouble)
+	{
+		if (!strHeader.endsWith(QStringLiteral("内侧")) && !strHeader.endsWith(QStringLiteral("外侧")))
+			return false;
+		strHeader.chop(2);	// 去掉内/外侧后缀,得到 侧别 + " " + 相别
+	}
+	const int nSpace = strHeader.indexOf(QLatin1Char(' '));
+	if (nSpace <= 0)
+		return false;
+	strSide = strHeader.left(nSpace);
+	strPhase = strHeader.mid(nSpace + 1);
+	nSliceNo = nRow + 1;	// 行号0-based → 片号1-based
+	return true;
+}
+
+void Insulator_Zero_Value_Detection_Robot::ResetSliceStatusLabel(int nSliceNo)
+{
+	QString strName = QString("labelInside%1").arg(nSliceNo);
+	QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+	if (label)
+		label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+	strName = QString("labelOutside%1").arg(nSliceNo);
+	label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
+	if (label)
+		label->setStyleSheet("QLabel { border-radius: 12px;\n    /* 可选:配套底色/边框按需加 */\n    background-color: #1A202B;\n}");
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_DeletePoint_Click()
+{
+	if (m_CurrentTicketConfig.m_strTicketId == "")
+	{
+		QMessageBox::information(this, "提示", "请加载一个工单");
+		return;
+	}
+	// 测量流程进行中禁止删除,避免与测量回填并发错乱
+	if (m_nMeasureStep != 0 || (m_pProbeWaitTimer != nullptr && m_pProbeWaitTimer->isActive()))
+	{
+		QMessageBox::information(this, "提示", "测量进行中,请等待测量结束");
+		return;
+	}
+
+	QString strSide, strPhase;
+	int nSliceNo = -1;
+	if (!GetSelectedPoint(strSide, strPhase, nSliceNo))
+	{
+		QMessageBox::information(this, "提示", "请先在测量数据表格中选中一个测量点位");
+		return;
+	}
+
+	const bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strPhase);
+	// 该片对应数组下标:双联=2*(N-1)(内)与2*(N-1)+1(外),单联=N-1
+	const int nInnerIndex = bDouble ? (2 * (nSliceNo - 1)) : (nSliceNo - 1);
+	const bool bHasInner = nInnerIndex < vecData.size() && !vecData[nInnerIndex].isNull();
+	const bool bHasOutside = bDouble && (nInnerIndex + 1 < vecData.size()) && !vecData[nInnerIndex + 1].isNull();
+	if (!bHasInner && !bHasOutside)
+	{
+		QMessageBox::information(this, "提示", "该点位无测量数据");
+		return;
+	}
+
+	QMessageBox::StandardButton reply = QMessageBox::question(this, QStringLiteral("确认删除"),
+		QStringLiteral("是否删除 %1 %2 第%3片的测量数据？").arg(strSide, strPhase).arg(nSliceNo),
+		QMessageBox::Yes | QMessageBox::No);
+	if (reply != QMessageBox::Yes)
+		return;
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("删除点位:侧别=" + strSide.toStdString() + " 相别=" + strPhase.toStdString()
+			+ " 第" + std::to_string(nSliceNo) + "片,仅清空该点位,后续数据保留原位");
+
+	// 双联:整片(内+外)置null空位;单联:单片置null;表格同步清空格与曲线点
+	if (bDouble)
+	{
+		if (bHasInner)
+			RemoveMearDataAt(m_mapTicketMearData, strSide, strPhase, nInnerIndex);
+		if (bHasOutside)
+			RemoveMearDataAt(m_mapTicketMearData, strSide, strPhase, nInnerIndex + 1);
+		if (m_pModelDataWidget)
+		{
+			m_pModelDataWidget->clearValueAt(strSide + " " + strPhase + QStringLiteral("内侧"), nSliceNo - 1);
+			m_pModelDataWidget->clearValueAt(strSide + " " + strPhase + QStringLiteral("外侧"), nSliceNo - 1);
+		}
+	}
+	else
+	{
+		RemoveMearDataAt(m_mapTicketMearData, strSide, strPhase, nSliceNo - 1);
+		if (m_pModelDataWidget)
+			m_pModelDataWidget->clearValueAt(strSide + " " + strPhase, nSliceNo - 1);
+	}
+
+	// 若删除的是当前相别的点位,状态灯同步复位
+	if (strSide == ui.comboBox_2->currentText() && strPhase == ui.comboBox->currentText())
+		ResetSliceStatusLabel(nSliceNo);
+
+	// 同步到当前工单配置并保存到XML（删除点位单次落盘）
+	m_CurrentTicketConfig.m_mapTicketMearData = m_mapTicketMearData;
+	for (auto& ticket : m_pConfig->m_vecNewTicketConfig)
+	{
+		if (ticket.m_strTicketId == m_CurrentTicketConfig.m_strTicketId)
+		{
+			ticket.m_mapTicketMearData = m_mapTicketMearData;
+			break;
+		}
+	}
+	m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml"));
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_StartFromPoint_Click()
+{
+	if (m_CurrentTicketConfig.m_strTicketId == "")
+	{
+		QMessageBox::information(this, "提示", "请加载一个工单");
+		return;
+	}
+	// 上一次测量流程未结束(含探针到位等待中),忽略重复触发
+	if (m_nMeasureStep != 0 || (m_pProbeWaitTimer != nullptr && m_pProbeWaitTimer->isActive()))
+		return;
+
+	QString strSide, strPhase;
+	int nSliceNo = -1;
+	if (!GetSelectedPoint(strSide, strPhase, nSliceNo))
+	{
+		QMessageBox::information(this, "提示", "请先在测量数据表格中选中一个测量点位");
+		return;
+	}
+
+	const bool bDouble = (m_CurrentTicketConfig.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
+	if (nSliceNo > m_CurrentTicketConfig.m_wInsulatorSliceNum)
+	{
+		QMessageBox::warning(this, "提示", QStringLiteral("第%1片超出本工单片数范围").arg(nSliceNo));
+		return;
+	}
+
+	// 将侧别/相别切到选中点位所在列(触发游标重置),再设置起始游标为该片第一个值的数组下标
+	int nSideIndex = ui.comboBox_2->findText(strSide);
+	if (nSideIndex >= 0)
+		ui.comboBox_2->setCurrentIndex(nSideIndex);
+	int nPhaseIndex = ui.comboBox->findText(strPhase);
+	if (nPhaseIndex >= 0)
+		ui.comboBox->setCurrentIndex(nPhaseIndex);
+	m_nMearStartIndex = bDouble ? (2 * (nSliceNo - 1)) : (nSliceNo - 1);
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("从该点测量:侧别=" + strSide.toStdString() + " 相别=" + strPhase.toStdString()
+			+ " 从第" + std::to_string(nSliceNo) + "片开始,新测量值覆盖写入该片及之后");
+
+	// 立即启动测量流程(与检测一致:探针指向内测,到位后测量;第一拍写入该片)
+	On_Test_Click();
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_SaveMotorSpeed_Click()
@@ -2891,6 +3120,8 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 {
 	QString strDira = ui.comboBox->currentText();
 	QString strSide = ui.comboBox_2->currentText();
+	// 切换相别/侧别时起始测量游标失效,恢复跟随空位/末尾
+	m_nMearStartIndex = -1;
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("切换相别/侧别:侧别=" + strSide.toStdString() + " 相别=" + strDira.toStdString());
 	QJsonArray vecData = GetMearDataArray(m_mapTicketMearData, strSide, strDira);
@@ -2921,6 +3152,8 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 			if (label)
 			{
 				// TODO:根据数据设置颜色
+				if (vecData[2 * i - 2].isNull())
+					continue;	// 已删除的空位保持默认底色
 				float valueInside = vecData[2 * i - 2].toDouble();
 				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold<=valueInside)
 				{
@@ -2934,6 +3167,7 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 			strName = QString("labelOutside%1").arg(i);
 			label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 			if (2 * i - 1 >= vecData.size())continue;
+			if (vecData[2 * i - 1].isNull())continue;
 			if (label)
 			{
 				float valueOutside = vecData[2 * i - 1].toDouble();
@@ -2956,6 +3190,8 @@ void Insulator_Zero_Value_Detection_Robot::On_combobox_currentIndexChanged(int i
 			QLabel* label = ui.tabWidget_2Page1->findChild<QLabel*>(strName);
 			if (label)
 			{
+				if (vecData[i - 1].isNull())
+					continue;	// 已删除的空位保持默认底色
 				float valueInside = vecData[i - 1].toDouble();
 				if(m_pConfig->m_memControlBoardConfig.m_wInsuThreshold<=valueInside)
 				{

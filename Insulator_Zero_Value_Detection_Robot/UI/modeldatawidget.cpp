@@ -33,6 +33,9 @@ ModelDataWidget::ModelDataWidget(QWidget *parent)
     // 列宽均匀拉伸：所有列等宽铺满表格，表格整体宽度仍由表头内容决定（见setTableLayout）
     m_tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_tableView->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    // 单元格单选（删除点位/从该点测量需要选中单元格，触摸屏点击即可选中）
+    m_tableView->setSelectionBehavior(QAbstractItemView::SelectItems);
+    m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
 
     auto chart = new QChart;
     chart->setAnimationOptions(QChart::AllAnimations); // enable animations
@@ -158,22 +161,99 @@ void ModelDataWidget::appendValue(const QString &header, double value)
     for (int row = 0; row < m_model->rowCount(); row++) {
         QModelIndex index = m_model->index(row, col);
         if (m_model->data(index, Qt::EditRole).typeId() != QMetaType::Double) {
-            m_model->setData(index, value);
-            // 横坐标用行数，纵坐标为对应行的值
-            m_series[col]->append(row + 1, value);
-
-            // 动态扩展纵轴范围
-            if (!m_hasValue) {
-                m_yMin = m_yMax = value;
-                m_hasValue = true;
-            } else {
-                m_yMin = qMin(m_yMin, value);
-                m_yMax = qMax(m_yMax, value);
-            }
-            double padding = qMax((m_yMax - m_yMin) * 0.1, 1.0);
-            m_axisY->setRange(m_yMin - padding, m_yMax + padding);
+            setValueAt(header, row, value);
             return;
         }
+    }
+}
+
+void ModelDataWidget::setValueAt(const QString &header, int row, double value)
+{
+    int col = m_model->columnIndex(header);
+    if (col < 0 || col >= m_series.size() || row < 0 || row >= m_model->rowCount())
+        return;
+
+    // 直接写入指定行（覆盖已有值或空位回填），告警文本保留（超时等占位格填值后仍标红）
+    m_model->setData(m_model->index(row, col), value);
+    updateSeriesPointAt(col, row, value);
+    updateAxes();
+}
+
+void ModelDataWidget::clearValueAt(const QString &header, int row)
+{
+    int col = m_model->columnIndex(header);
+    if (col < 0 || col >= m_series.size() || row < 0 || row >= m_model->rowCount())
+        return;
+
+    const double empty = std::numeric_limits<double>::quiet_NaN();
+    m_model->setData(m_model->index(row, col), empty);
+    m_model->setCellAlarm(row, col, QString());
+    // 移除该行对应曲线点（无点则忽略）
+    const qreal x = row + 1;
+    const auto points = m_series[col]->points();
+    for (int i = points.size() - 1; i >= 0; i--) {
+        if (points.at(i).x() == x) {
+            m_series[col]->removePoints(i, 1);
+            break;
+        }
+    }
+    updateAxes();
+}
+
+bool ModelDataWidget::getSelectedCell(QString &strHeader, int &nRow) const
+{
+    const QModelIndexList sel = m_tableView->selectionModel()->selectedIndexes();
+    if (sel.isEmpty())
+        return false;
+    const QModelIndex index = sel.first();
+    if (!index.isValid() || index.column() < 0 || index.column() >= m_model->columnCount())
+        return false;
+    strHeader = m_model->headerData(index.column(), Qt::Horizontal, Qt::DisplayRole).toString().replace(QLatin1Char('\n'), QLatin1Char(' '));
+    nRow = index.row();
+    return true;
+}
+
+void ModelDataWidget::updateSeriesPointAt(int col, int row, double value)
+{
+    const qreal x = row + 1;
+    QLineSeries *series = m_series.at(col);
+    const auto points = series->points();
+    // x已存在则替换，否则按x排序插入，保证空位回填后曲线顺序不乱
+    for (int i = 0; i < points.size(); i++) {
+        if (points.at(i).x() == x) {
+            series->replace(x, points.at(i).y(), x, value);
+            return;
+        }
+        if (points.at(i).x() > x) {
+            series->insert(i, QPointF(x, value));
+            return;
+        }
+    }
+    series->append(x, value);
+}
+
+void ModelDataWidget::updateAxes()
+{
+    // 从所有曲线点重新计算纵轴范围（删除/覆盖后保持范围准确），横轴范围在建表时已固定
+    bool hasValue = false;
+    double yMin = 0, yMax = 0;
+    for (QLineSeries *series : m_series) {
+        const auto points = series->points();
+        for (const QPointF &p : points) {
+            if (!hasValue) {
+                yMin = yMax = p.y();
+                hasValue = true;
+            } else {
+                yMin = qMin(yMin, p.y());
+                yMax = qMax(yMax, p.y());
+            }
+        }
+    }
+    if (hasValue) {
+        const double padding = qMax((yMax - yMin) * 0.1, 1.0);
+        m_axisY->setRange(yMin - padding, yMax + padding);
+    } else {
+        m_axisY->setRange(0, 1);
     }
 }
 
@@ -205,6 +285,7 @@ void ModelDataWidget::removeLastValue(const QString &header)
                 if (!points.isEmpty())
                     m_series[col]->removePoints(points.size() - 1, 1);
             }
+            updateAxes();
             return;
         }
     }
