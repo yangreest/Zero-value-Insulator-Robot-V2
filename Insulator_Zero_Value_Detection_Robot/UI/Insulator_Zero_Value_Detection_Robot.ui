@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1209</width>
-    <height>836</height>
+    <height>895</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -441,7 +441,7 @@ border: 1px solid #0D1321;
               <number>2</number>
              </property>
              <property name="bottomMargin">
-              <number>2</number>
+              <number>12</number>
              </property>
              <item>
               <layout class="QHBoxLayout" name="horizontalLayout_7">
@@ -654,6 +654,13 @@ background-color:#2563eb;</string>
                  </property>
                 </widget>
                </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_13">
+               <property name="topMargin">
+                <number>0</number>
+               </property>
                <item>
                 <widget class="QPushButton" name="pBDeletePoint">
                  <property name="enabled">
@@ -6777,7 +6784,7 @@ border :none;
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>
