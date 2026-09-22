@@ -62,7 +62,8 @@ public:
 
 	// ===== HTML 富文本报告（Qt QTextDocument 子集，弹窗预览与导出 PDF 通用）=====
 
-	// 填充 HTML 模板：将 ${key} 占位符替换为实际数据（值做 HTML 转义）
+	// 填充 HTML 模板：将 ${key} 占位符替换为实际数据
+	// 纯文本值做 HTML 转义；mearTable 为 BuildMearTableHtml 预生成的 HTML 表格片段，原样插入不转义
 	static QString FillHtmlTemplate(
 		const QString& strTemplate,
 		const QHash<QString, QString>& mapData);

@@ -345,10 +345,14 @@ QString CWriteReports::FillHtmlTemplate(
 {
 	QString strResult = strTemplate;
 	for (auto it = mapData.constBegin(); it != mapData.constEnd(); ++it)
-		strResult.replace("${" + it.key() + "}", HtmlEscape(it.value()));
+	{
+		// mearTable 为 BuildMearTableHtml 预生成的 HTML 表格片段，
+		// 若被转义成 &lt;table&gt;...，预览控件会将其当作纯文本显示而不是表格
+		const bool bRawHtml = (it.key() == QLatin1String("mearTable"));
+		strResult.replace("${" + it.key() + "}", bRawHtml ? it.value() : HtmlEscape(it.value()));
+	}
 	return strResult;
 }
-
 // 生成测量数据表 HTML（行=最大片数，列=侧别×相别，双联每相拆内/外侧）
 QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble)
 {
@@ -382,30 +386,35 @@ QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, 
 		}
 	}
 
-	QString strHtml = "<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\" width=\"100%\" style=\"border-collapse:collapse;\">";
-	// 表头:片号 + 各列(侧别+相别[+内/外侧])
-	strHtml += "<tr><td style=\"font-weight:bold; background-color:#f2f2f2; text-align:center;\">片号</td>";
+	// QTextDocument 的 HTML 子集不支持 CSS 表格样式（border/width 等 style 会被忽略），
+	// 边框、宽度、底色、对齐必须用 table/td/th 的属性形式（border/cellspacing/width/bgcolor/align）
+	QString strHtml = "<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\" width=\"100%\">";
+
+	// 表头（th 在 QTextDocument 中默认加粗）
+	strHtml += "<thead><tr>";
+	strHtml += "<th bgcolor=\"#f2f2f2\" align=\"center\">片号</th>";
 	for (const ColInfo& col : vecCols)
 	{
 		QString strHead = col.strSide + " " + col.strPhase;
 		if (bDouble)
 			strHead += (col.bOutside ? QStringLiteral("外侧") : QStringLiteral("内侧"));
-		strHtml += "<td style=\"font-weight:bold; background-color:#f2f2f2; text-align:center;\">"
-			+ HtmlEscape(strHead) + "</td>";
+		strHtml += "<th bgcolor=\"#f2f2f2\" align=\"center\">"
+			+ HtmlEscape(strHead) + "</th>";
 	}
-	strHtml += "</tr>";
+	strHtml += "</tr></thead><tbody>";
 
 	if (nRows <= 0)
 	{
 		// 无测量数据:占位行
-		strHtml += "<tr><td colspan=\"" + QString::number(vecCols.size() + 1)
-			+ "\" style=\"text-align:center;\">暂无测量数据</td></tr>";
+		strHtml += "<tr><td align=\"center\" colspan=\"" + QString::number(vecCols.size() + 1)
+			+ "\">暂无测量数据</td></tr>";
 	}
 	else
 	{
 		for (int n = 1; n <= nRows; ++n)
 		{
-			strHtml += "<tr><td style=\"text-align:center;\">" + QString::number(n) + "</td>";
+			strHtml += "<tr>";
+			strHtml += "<td align=\"center\">" + QString::number(n) + "</td>";
 			for (const ColInfo& col : vecCols)
 			{
 				QString strValue;
@@ -420,12 +429,12 @@ QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, 
 				{
 					strValue = QString::number(col.arrData[n - 1].toDouble());
 				}
-				strHtml += "<td style=\"text-align:center;\">" + strValue + "</td>";
+				strHtml += "<td align=\"center\">" + strValue + "</td>";
 			}
 			strHtml += "</tr>";
 		}
 	}
-	strHtml += "</table>";
+	strHtml += "</tbody></table>";
 	return strHtml;
 }
 
