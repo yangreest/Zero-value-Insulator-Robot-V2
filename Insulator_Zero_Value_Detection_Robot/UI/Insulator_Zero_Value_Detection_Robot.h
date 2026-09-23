@@ -208,8 +208,22 @@ private:
 	void AbortMeasure(const QString& strReason);
 
 	// ===== 告警面板 =====
+	// 告警等级:决定顶部弹窗背景色(严重=红 警告=橙 提示=蓝)
+	enum EAlarmLevel
+	{
+		eAlarmLevelInfo = 0,	// 提示
+		eAlarmLevelWarning,		// 警告
+		eAlarmLevelCritical		// 严重
+	};
+
 	// 在告警表(tableWidget)首行插入一条告警(时间/类型/位置/详情/状态),仅UI线程调用
 	void AddAlarm(const QString& strType, const QString& strLocation, const QString& strDetail);
+
+	// 按告警类型映射告警等级(零值/低值=严重,测量异常=警告,其余=提示)
+	static EAlarmLevel AlarmLevelFromType(const QString& strType);
+
+	// 在界面顶部弹出告警框,背景色随等级变化,4秒后自动消失;仅UI线程调用
+	void ShowAlarmPopup(EAlarmLevel eLevel, const QString& strText);
 
 	// ===== 工单表维护 =====
 	// 重排工单表序号列(第0列文本),用于新增/删除后保持序号连续
@@ -308,6 +322,10 @@ private:
 	// 测量等待弹窗及其提示文本（懒创建，复用）
 	QDialog* m_pMeasureWaitDialog = nullptr;
 	QLabel* m_pMeasureWaitLabel = nullptr;
+
+	// 顶部告警弹窗及其自动消失定时器（懒创建，复用;新告警覆盖旧内容并重新计时）
+	QLabel* m_pAlarmPopupLabel = nullptr;
+	QTimer* m_pAlarmHideTimer = nullptr;
 
 	// ===== 测量流程状态机成员 =====
 	// 探针到位轮询定时器（周期触发，判断到位信号或兜底超时）

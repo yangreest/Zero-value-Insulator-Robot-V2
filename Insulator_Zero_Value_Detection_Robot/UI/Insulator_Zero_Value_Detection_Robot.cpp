@@ -134,7 +134,7 @@ void Insulator_Zero_Value_Detection_Robot::InitUI()
 		}
 		});
 
-	//ui.groupBox_7->setVisible(false);
+	ui.groupBox_7->setVisible(false);
 
 	// 获取结果,执行下一个
 	if (overlayLabel == nullptr)
@@ -3053,6 +3053,64 @@ void Insulator_Zero_Value_Detection_Robot::AddAlarm(const QString& strType, cons
 	ui.tableWidget->setItem(0, 4, new QTableWidgetItem(QStringLiteral("未处理")));
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("告警:" + strType.toStdString() + " " + strLocation.toStdString() + " " + strDetail.toStdString());
+
+	// 写入告警表的同时,在界面顶部弹出同内容的告警框,背景色随等级变化,4秒后自动消失
+	static const QString s_arLevelName[] = { QStringLiteral("提示"), QStringLiteral("警告"), QStringLiteral("严重") };
+	EAlarmLevel eLevel = AlarmLevelFromType(strType);
+	QString strPopup = QStringLiteral("【%1】%2  %3  %4").arg(s_arLevelName[eLevel], strType, strLocation, strDetail);
+	ShowAlarmPopup(eLevel, strPopup);
+}
+
+Insulator_Zero_Value_Detection_Robot::EAlarmLevel Insulator_Zero_Value_Detection_Robot::AlarmLevelFromType(const QString& strType)
+{
+	// 零值/低值为检测出的缺陷,等级最高;测量异常影响流程,定为警告;其余类型按提示处理
+	if (strType == QStringLiteral("零值/低值"))
+		return eAlarmLevelCritical;
+	if (strType == QStringLiteral("测量异常"))
+		return eAlarmLevelWarning;
+	return eAlarmLevelInfo;
+}
+
+void Insulator_Zero_Value_Detection_Robot::ShowAlarmPopup(EAlarmLevel eLevel, const QString& strText)
+{
+	// 懒创建浮动告警标签:父对象为主窗口,不拦截鼠标事件,悬浮在现有控件上方
+	if (m_pAlarmPopupLabel == nullptr)
+	{
+		m_pAlarmPopupLabel = new QLabel(this);
+		m_pAlarmPopupLabel->setWordWrap(true);
+		m_pAlarmPopupLabel->setAlignment(Qt::AlignCenter);
+		m_pAlarmPopupLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+		// 单次定时器:到时隐藏弹窗;新告警到达时重新start即重新计时
+		m_pAlarmHideTimer = new QTimer(this);
+		m_pAlarmHideTimer->setSingleShot(true);
+		m_pAlarmHideTimer->setInterval(4000);
+		connect(m_pAlarmHideTimer, &QTimer::timeout, this, [this]() {
+			if (m_pAlarmPopupLabel)
+				m_pAlarmPopupLabel->hide();
+			});
+	}
+
+	// 背景色随告警等级:严重=红 警告=橙 提示=蓝
+	const char* pszBgColor = "#1565C0";
+	if (eLevel == eAlarmLevelCritical)
+		pszBgColor = "#D32F2F";
+	else if (eLevel == eAlarmLevelWarning)
+		pszBgColor = "#EF6C00";
+	m_pAlarmPopupLabel->setStyleSheet(QString(
+		"QLabel { background-color: %1; color: white; font-size: 18px; font-weight: bold;"
+		" border-radius: 8px; padding: 10px 24px; }").arg(pszBgColor));
+
+	m_pAlarmPopupLabel->setText(strText);
+	// 限制最大宽度避免长文本拉通整屏,自适应高度后水平居中靠顶部显示
+	m_pAlarmPopupLabel->setMaximumWidth(width() * 2 / 3);
+	m_pAlarmPopupLabel->adjustSize();
+	m_pAlarmPopupLabel->move((width() - m_pAlarmPopupLabel->width()) / 2, 16);
+	m_pAlarmPopupLabel->show();
+	m_pAlarmPopupLabel->raise();
+
+	// 4秒后自动消失;弹窗期间又来新告警则覆盖内容并重新计时
+	m_pAlarmHideTimer->start();
 }
 
 void Insulator_Zero_Value_Detection_Robot::FilterTicketTable()
