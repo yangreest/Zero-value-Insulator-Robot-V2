@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1211</width>
-    <height>836</height>
+    <width>1209</width>
+    <height>895</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -441,7 +441,7 @@ border: 1px solid #0D1321;
               <number>2</number>
              </property>
              <property name="bottomMargin">
-              <number>2</number>
+              <number>12</number>
              </property>
              <item>
               <layout class="QHBoxLayout" name="horizontalLayout_7">
@@ -651,6 +651,55 @@ background-color:#2563eb;</string>
                  </property>
                  <property name="text">
                   <string>复检</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_13">
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QPushButton" name="pBDeletePoint">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>35</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">border-radius:8px;
+
+background-color:#ef4444;</string>
+                 </property>
+                 <property name="text">
+                  <string>删除点位</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pBStartFromPoint">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>35</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">border-radius:8px;
+
+background-color:#f59e0b;</string>
+                 </property>
+                 <property name="text">
+                  <string>从该点测量</string>
                  </property>
                 </widget>
                </item>
@@ -1395,7 +1444,7 @@ QPushButton:checked {
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>0</number>
+           <number>1</number>
           </property>
           <widget class="QWidget" name="stackedWidget_3Page1">
            <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -4898,6 +4947,32 @@ QPushButton:pressed
                 </property>
                 <property name="text">
                  <string>生成报告</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="pBPreviewReport">
+                <property name="styleSheet">
+                 <string notr="true">
+QPushButton
+{
+    background-color:#222833;
+    color:white;
+    border:1px solid #444c5a;
+    border-radius:4px;
+    padding:4px 12px;
+}
+QPushButton:hover
+{
+    border-color:#60a5fa;
+}
+QPushButton:pressed
+{
+    background-color:#303846;
+}</string>
+                </property>
+                <property name="text">
+                 <string>预览报告</string>
                 </property>
                </widget>
               </item>

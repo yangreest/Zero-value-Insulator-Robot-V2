@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+</head>
+<body>
+<h1 style="text-align:center;">绝缘子零值检测报告</h1>
+<p style="text-align:center;">报告编号：${ticketId}</p>
+
+<h3>一、基本信息</h3>
+<table border="1" cellspacing="0" cellpadding="4" width="100%" style="border-collapse:collapse;">
+  <tr>
+    <td style="font-weight:bold; background-color:#f2f2f2;">线路名称</td><td>${lineName}</td>
+    <td style="font-weight:bold; background-color:#f2f2f2;">杆塔号</td><td>${poleNumber}</td>
+  </tr>
+  <tr>
+    <td style="font-weight:bold; background-color:#f2f2f2;">串型</td><td>${bunchType}</td>
+    <td style="font-weight:bold; background-color:#f2f2f2;">绝缘子片数</td><td>${sliceNum}</td>
+  </tr>
+  <tr>
+    <td style="font-weight:bold; background-color:#f2f2f2;">回路数</td><td>${loopType}</td>
+    <td style="font-weight:bold; background-color:#f2f2f2;">电流类型</td><td>${currentType}</td>
+  </tr>
+  <tr>
+    <td style="font-weight:bold; background-color:#f2f2f2;">检测单位</td><td>${detectionUnit}</td>
+    <td style="font-weight:bold; background-color:#f2f2f2;">检测人员</td><td>${detectionPerson}</td>
+  </tr>
+  <tr>
+    <td style="font-weight:bold; background-color:#f2f2f2;">开始时间</td><td>${startTime}</td>
+    <td style="font-weight:bold; background-color:#f2f2f2;">结束时间</td><td>${endTime}</td>
+  </tr>
+</table>
+
+<h3>二、测量数据（MΩ）</h3>
+${mearTable}
+
+<h3>三、检测结论</h3>
+<p>${conclusion}</p>
+
+<h3>四、备注</h3>
+<p>${remark}</p>
+</body>
+</html>

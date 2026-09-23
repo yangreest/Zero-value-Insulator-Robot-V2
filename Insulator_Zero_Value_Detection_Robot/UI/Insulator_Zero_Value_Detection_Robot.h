@@ -16,6 +16,7 @@
 #include <opencv2/opencv.hpp>
 #include <UI/NewTicketDialog.h>
 #include <UI/NewReportDialog.h>
+#include <UI/PreviewReportDialog.h>
 
 #include "UI/contentwidget.h"
 #include "UI/modeldatawidget.h"
@@ -60,12 +61,18 @@ private slots:
 	void On_SetFileName_Click();
 	void On_NewTicket_Click();
 	void On_NewReport_Click();
+	// 预览报告:弹窗展示当前工单的富文本报告,支持导出PDF
+	void On_PreviewReport_Click();
 	void On_DeleteTicket_Click();
 	void On_ChangeTicket_Click();
 	void On_LoadTicket_Click();
 	void On_DeleteReport_Click();
 	void On_Test_Click();
 	void On_Retest_Click();
+	// 删除选中点位的测量数据（仅清空该点位，后续数据保留原位）
+	void On_DeletePoint_Click();
+	// 从选中点位开始测量（设置起始游标并立即启动测量流程，新值从该点覆盖写入）
+	void On_StartFromPoint_Click();
 
 
 	// 保存电机速度
@@ -87,7 +94,7 @@ private slots:
 	void On_ResetReport_Click();
 
 	void On_forword_Click();
-    void On_backward_Click();
+	void On_backward_Click();
 	void On_neddle1_Click();
 	void On_neddle2_Click();
 	void On_neddle3_Click();
@@ -129,12 +136,12 @@ private slots:
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
 	void On_ChangeTicketSignal(CNewTicketConfig strTicket);
-    void On_NewReportSignal(CNewReportConfig strReport);
+	void On_NewReportSignal(CNewReportConfig strReport);
 	void On_ChangeReportSignal(CNewReportConfig strReport);
 
-    // Deleted:// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
-    // Deleted:// 置位后到位轮询会立即触发测量,无需等待兜底超时
-    // Deleted:void NotifyProbeArrived();
+	// Deleted:// 预留:下位机"探针到位"信号到达时调用(当前协议未提供,由自航确认后接入),
+	// Deleted:// 置位后到位轮询会立即触发测量,无需等待兜底超时
+	// Deleted:void NotifyProbeArrived();
 
 private:
 	Ui::Insulator_Zero_Value_Detection_RobotClass ui;
@@ -179,6 +186,14 @@ private:
 	std::string GenerateUniqueTicketId();
 	std::string GenerateUniqueReportId();
 
+	// ===== 报告生成（HTML 富文本模板 + PDF 导出）=====
+	// 读取报告模板文件（exe目录/ReportTemplate.html），缺失时返回内置默认模板
+	QString LoadReportTemplate();
+	// 用当前工单及其测量数据填充模板，生成报告 HTML
+	QString BuildReportHtml();
+	// 生成当前工单报告并导出 PDF 到默认目录，成功返回 true
+	bool GenerateCurrentTicketReport();
+
 	//自定义显示label
 	void SetVisibles(bool bVisible,int nSliceNum);
 
@@ -206,6 +221,18 @@ private:
 	void TriggerMeasureAndArm();
 	// 异常结束本次测量:探针复原、关闭等待窗、恢复按钮、清步骤并记录告警
 	void AbortMeasure(const QString& strReason);
+	// 计算当前待测量位置对应的测量表格表头与0-based行号，供测量告警写入测量数据表格
+	void CalcPendingCell(QString& strHeader, int& nRow);
+	// 把测量告警同步写入测量数据表格对应单元格（探针超时/测量超时/数据异常等）
+	void AddMeasureTableAlarm(const QString& strHeader, int nRow, const QString& strReason);
+
+	// ===== 测量点位删除/起点测量 =====
+	// 计算指定侧别/相别的下一个写入下标：起始游标>=0时返回游标；否则返回首个null空位下标；无空位返回数组长度
+	int GetMearWriteIndex(const QString& strSide, const QString& strDira);
+	// 解析测量表格当前选中单元格→侧别/相别/片号(1-based)，未选中或无效返回false
+	bool GetSelectedPoint(QString& strSide, QString& strPhase, int& nSliceNo);
+	// 检测串状态页中指定片号的内/外侧状态灯恢复默认底色
+	void ResetSliceStatusLabel(int nSliceNo);
 
 	// ===== 告警面板 =====
 	// 告警等级:决定顶部弹窗背景色(严重=红 警告=橙 提示=蓝)
@@ -306,6 +333,11 @@ private:
 	NewReportDialog* newReportDialog;
 	NewTicketDialog* newTicketDialog;
 
+	// 预览报告弹窗（懒创建，复用）
+	PreviewReportDialog* m_pPreviewReportDialog = nullptr;
+	// 最近一次生成的报告 HTML（切换工单后清空，预览时为空则重新生成）
+	QString m_strLastReportHtml;
+
 	ContentWidget* m_activeWidget = nullptr;
 
 	// 电阻值表格/曲线控件（列随comboBox、行随片数）
@@ -313,6 +345,10 @@ private:
 
 	// 测量数据（JSON格式）:第一层key为侧别,第二层key为相别/方向,值为该相测量值数组(QJsonArray)
 	QJsonObject m_mapTicketMearData;
+
+	// 起始测量游标（-1=未设置，跟随首个空位/末尾；>=0时测量值写入该下标并递增）
+	// UI线程设置/重置,协议线程写入测量值时读取并递增,故用原子变量
+	std::atomic<int> m_nMearStartIndex{ -1 };
 
 	CNewTicketConfig m_CurrentTicketConfig;
 
@@ -332,12 +368,12 @@ private:
 	QTimer* m_pProbeWaitTimer = nullptr;
 	// 测量结果超时定时器（单次，发出测量指令后启动）
 	QTimer* m_pMeasureTimeoutTimer = nullptr;
-    // 本轮到位等待的起始时刻，用于计算兜底超时
-    QDateTime m_probeWaitStart;
-    // Deleted:// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
-    // Deleted:std::atomic<bool> m_bProbeArrived{ false };
-    // 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
-    bool m_bPendingInsideCapture = true;
+	// 本轮到位等待的起始时刻，用于计算兜底超时
+	QDateTime m_probeWaitStart;
+	// Deleted:// 下位机到位信号标志：UI线程读、预留信号处理写，置位后到位轮询立即触发测量
+	// Deleted:std::atomic<bool> m_bProbeArrived{ false };
+	// 到位后待执行测量的参数（由 StartProbeMoveAndWait 记录，TriggerMeasureAndArm 使用）
+	bool m_bPendingInsideCapture = true;
 	int m_nPendingStep = 1;
 	QString m_strPendingMeasureText;
 

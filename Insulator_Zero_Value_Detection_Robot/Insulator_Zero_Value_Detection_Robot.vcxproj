@@ -109,6 +109,7 @@
     <ClCompile Include="UI\modeldatawidget.cpp" />
     <ClCompile Include="UI\NewReportDialog.cpp" />
     <ClCompile Include="UI\NewTicketDialog.cpp" />
+    <ClCompile Include="UI\PreviewReportDialog.cpp" />
     <QtRcc Include="UI\Insulator_Zero_Value_Detection_Robot.qrc" />
     <QtMoc Include="UI\Insulator_Zero_Value_Detection_Robot.h" />
     <ClCompile Include="Camera\CameraBase.cpp" />
@@ -127,6 +128,7 @@
     <ClCompile Include="main.cpp" />
     <QtUic Include="UI\NewReportDialog.ui" />
     <QtUic Include="UI\NewTicketDialog.ui" />
+    <QtUic Include="UI\PreviewReportDialog.ui" />
     <QtUic Include="UI\Insulator_Zero_Value_Detection_Robot.ui" />
   </ItemGroup>
   <ItemGroup>
@@ -138,6 +140,7 @@
     <QtMoc Include="UI\contentwidget.h" />
     <QtMoc Include="UI\NewReportDialog.h" />
     <QtMoc Include="UI\NewTicketDialog.h" />
+    <QtMoc Include="UI\PreviewReportDialog.h" />
     <ClInclude Include="DeviceCom\IDeviceCom.h" />
     <ClInclude Include="DeviceCom\TcpClient.h" />
     <ClInclude Include="Log\ScanS_FC.h" />
