@@ -1715,7 +1715,7 @@ QTabBar::tab:disabled {
 }</string>
                </property>
                <property name="currentIndex">
-                <number>0</number>
+                <number>2</number>
                </property>
                <widget class="QWidget" name="tabWidget_2Page1">
                 <attribute name="title">
@@ -6784,7 +6784,7 @@ border :none;
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup"/>
   <buttongroup name="buttonGroup_2"/>
+  <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>
