@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-09-18T07:08:40Z"
+exported_at: "2026-09-23T06:49:15Z"
 modules:
     "":
-        dir_name: 绝缘子零值检测机器人 V2 解决方案
-        title: 绝缘子零值检测机器人 V2 解决方案
+        dir_name: 绝缘子零值检测机器人（V2）解决方案根
+        title: 绝缘子零值检测机器人（V2）解决方案根
         scope:
             - README.md
             - .gitignore
