@@ -1506,6 +1506,11 @@ void Insulator_Zero_Value_Detection_Robot::NewCameraConnect()
 	{
 		rtsp_url = strRTSP_URL.toStdString();
 	}
+	// 将 rtsp_url 中的 IP 地址替换为配置的左摄像头 IP
+	QRegularExpression ipRegex(R"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})");
+	QString qUrl = QString::fromStdString(rtsp_url);
+	qUrl.replace(ipRegex, QString::fromStdString(m_pConfig->m_memCCameraConfig.m_strLeftIp));
+	rtsp_url = qUrl.toStdString();
 	if (m_pDeviceLog)
 		m_pDeviceLog->Write("NewCameraConnect:开始连接RTSP摄像头 " + rtsp_url);
 
