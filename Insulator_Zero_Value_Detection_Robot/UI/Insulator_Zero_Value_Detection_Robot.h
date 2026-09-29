@@ -252,6 +252,9 @@ private:
 	// 在界面顶部弹出告警框,背景色随等级变化,4秒后自动消失;仅UI线程调用
 	void ShowAlarmPopup(EAlarmLevel eLevel, const QString& strText);
 
+	// 计算告警弹窗位置:测量等待弹窗可见时下移到其下方,避免两者重叠;仅UI线程调用
+	void PositionAlarmPopup();
+
 	// ===== 工单表维护 =====
 	// 重排工单表序号列(第0列文本),用于新增/删除后保持序号连续
 	void RenumberTicketTable();

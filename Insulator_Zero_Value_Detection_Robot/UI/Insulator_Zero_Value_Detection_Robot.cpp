@@ -2575,6 +2575,8 @@ void Insulator_Zero_Value_Detection_Robot::ShowMeasureWaitDialog(const QString& 
 		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
 	m_pMeasureWaitDialog->show();
 	m_pMeasureWaitDialog->raise();
+	// 等待弹窗弹出后,已显示的告警弹窗需下移错开位置
+	PositionAlarmPopup();
 }
 
 void Insulator_Zero_Value_Detection_Robot::UpdateMeasureWaitDialog(const QString& strText)
@@ -2585,12 +2587,16 @@ void Insulator_Zero_Value_Detection_Robot::UpdateMeasureWaitDialog(const QString
 	m_pMeasureWaitDialog->adjustSize();
 	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
 		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
+	// 等待弹窗尺寸变化后同步重排告警弹窗
+	PositionAlarmPopup();
 }
 
 void Insulator_Zero_Value_Detection_Robot::HideMeasureWaitDialog()
 {
 	if (m_pMeasureWaitDialog != nullptr)
 		m_pMeasureWaitDialog->hide();
+	// 等待弹窗关闭后,仍在显示的告警弹窗回到顶部默认位置
+	PositionAlarmPopup();
 }
 
 bool Insulator_Zero_Value_Detection_Robot::eventFilter(QObject* obj, QEvent* event)
@@ -3522,15 +3528,30 @@ void Insulator_Zero_Value_Detection_Robot::ShowAlarmPopup(EAlarmLevel eLevel, co
 		" border-radius: 8px; padding: 10px 24px; }").arg(pszBgColor));
 
 	m_pAlarmPopupLabel->setText(strText);
-	// 限制最大宽度避免长文本拉通整屏,自适应高度后水平居中靠顶部显示
+	// 限制最大宽度避免长文本拉通整屏,自适应尺寸后按等待弹窗状态错开位置显示
 	m_pAlarmPopupLabel->setMaximumWidth(width() * 2 / 3);
 	m_pAlarmPopupLabel->adjustSize();
-	m_pAlarmPopupLabel->move((width() - m_pAlarmPopupLabel->width()) / 2, 16);
+	PositionAlarmPopup();
 	m_pAlarmPopupLabel->show();
 	m_pAlarmPopupLabel->raise();
 
 	// 4秒后自动消失;弹窗期间又来新告警则覆盖内容并重新计时
 	m_pAlarmHideTimer->start();
+}
+
+void Insulator_Zero_Value_Detection_Robot::PositionAlarmPopup()
+{
+	if (m_pAlarmPopupLabel == nullptr)
+		return;
+	// 默认靠顶部水平居中(父对象为centralWidget,主窗口无边框,两者坐标原点一致)
+	int nTop = 16;
+	// 测量等待弹窗可见时,告警弹窗下移到其下方,避免两者重叠
+	if (m_pMeasureWaitDialog != nullptr && m_pMeasureWaitDialog->isVisible())
+	{
+		QPoint ptDialogInWindow = mapFromGlobal(m_pMeasureWaitDialog->pos());
+		nTop = ptDialogInWindow.y() + m_pMeasureWaitDialog->height() + 8;
+	}
+	m_pAlarmPopupLabel->move((width() - m_pAlarmPopupLabel->width()) / 2, nTop);
 }
 
 void Insulator_Zero_Value_Detection_Robot::FilterTicketTable()
