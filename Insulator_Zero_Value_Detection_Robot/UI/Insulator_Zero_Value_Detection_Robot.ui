@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1209</width>
+    <width>1211</width>
     <height>895</height>
    </rect>
   </property>
@@ -1444,7 +1444,7 @@ QPushButton:checked {
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>1</number>
+           <number>0</number>
           </property>
           <widget class="QWidget" name="stackedWidget_3Page1">
            <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -1715,7 +1715,7 @@ QTabBar::tab:disabled {
 }</string>
                </property>
                <property name="currentIndex">
-                <number>2</number>
+                <number>0</number>
                </property>
                <widget class="QWidget" name="tabWidget_2Page1">
                 <attribute name="title">
@@ -6784,7 +6784,7 @@ border :none;
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>

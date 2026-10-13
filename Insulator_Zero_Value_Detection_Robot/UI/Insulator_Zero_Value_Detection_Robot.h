@@ -40,6 +40,8 @@ signals:
 	void CalibMeasureValueSignal(double dValue);
 	// 0x17校准命令应答（子命令/结果/原因/参数1/参数2，参数为毫值）
 	void CalibAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, qint32 nValue1, qint32 nValue2);
+	// OTA升级状态回调（协议线程emit，队列连接切到UI线程）
+	void OtaStatusSignal(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex);
 
 private slots:
 	void On_timer_timeout();
@@ -133,6 +135,11 @@ private slots:
 	// 等待超时：0x0F约3.2秒回报、0x0E写Flash需1~2秒，超时结束本轮等待
 	void On_CalibTimeout();
 
+	// OTA升级按钮点击：选择bin文件并启动升级流程
+	void On_Upgrade_Click();
+	// OTA状态回调（UI线程）：完成/失败时关闭等待弹窗并提示
+	void On_OtaStatus(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex);
+
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
 	void On_ChangeTicketSignal(CNewTicketConfig strTicket);
@@ -193,6 +200,13 @@ private:
 	QString BuildReportHtml();
 	// 生成当前工单报告并导出 PDF 到默认目录，成功返回 true
 	bool GenerateCurrentTicketReport();
+
+	// 将弹窗定位并缩放到"实时视频header行"区域（pBInspection下缘/label_47右缘/pushButton_2左缘/label_9上缘）
+	QPoint PositionDialogInVideoHeaderRegion();
+
+	// OTA等待弹窗（懒创建，不可关闭，升级结束前拦截Esc/关闭事件）
+	void ShowOtaWaitDialog(const QString& strText);
+	void HideOtaWaitDialog();
 
 	//自定义显示label
 	void SetVisibles(bool bVisible,int nSliceNum);
@@ -362,6 +376,12 @@ private:
 	// 顶部告警弹窗及其自动消失定时器（懒创建，复用;新告警覆盖旧内容并重新计时）
 	QLabel* m_pAlarmPopupLabel = nullptr;
 	QTimer* m_pAlarmHideTimer = nullptr;
+
+	// OTA升级等待弹窗（懒创建，复用;升级期间不可关闭）
+	QDialog* m_pOtaWaitDialog = nullptr;
+	QLabel* m_pOtaWaitLabel = nullptr;
+	// OTA进行中标志：防止重复点击升级按钮
+	std::atomic<bool> m_bOtaInProgress{ false };
 
 	// ===== 测量流程状态机成员 =====
 	// 探针到位轮询定时器（周期触发，判断到位信号或兜底超时）

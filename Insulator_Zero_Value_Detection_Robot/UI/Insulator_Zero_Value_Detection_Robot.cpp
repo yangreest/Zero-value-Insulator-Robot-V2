@@ -328,6 +328,10 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 	pWHSDControlBoardProtocol->RegisterZeroDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterCalibCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterServoArrivalCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ServoArrival, this, std::placeholders::_1));
+	// OTA状态回调：协议线程内emit信号，队列连接切到UI线程处理
+	pWHSDControlBoardProtocol->RegisterOTAStatus([this](uint8_t status, uint32_t all, uint32_t idx) {
+		emit OtaStatusSignal(status, all, idx);
+		});
 	//	std::placeholders::_1,
 	//	std::placeholders::_2, std::placeholders::_3));
 	//pWHSDControlBoardProtocol->RegisterXRaySendResult(xRayResult);
@@ -446,6 +450,11 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibMeasureValue, Qt::QueuedConnection);
 	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibAnswerSignal,
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibAnswer, Qt::QueuedConnection);
+
+	// OTA升级：升级按钮点击 + 状态回调（协议线程emit，队列连接切到UI线程）
+	connect(ui.pushButton_7, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click);
+	connect(this, &Insulator_Zero_Value_Detection_Robot::OtaStatusSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_OtaStatus, Qt::QueuedConnection);
 
 
 	ui.pBInspection->setChecked(true);
@@ -2034,10 +2043,11 @@ QString Insulator_Zero_Value_Detection_Robot::BuildReportHtml()
 	mapData["remark"] = QString::fromStdString(ticket.m_strRemark);
 
 	const bool bDouble = (ticket.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
-	mapData["mearTable"] = CWriteReports::BuildMearTableHtml(m_mapTicketMearData, bDouble);
+	// 绝缘阈值：mearTable中低于此值的测量值以红色显示，结论统计也复用此阈值
+	const double dThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
+	mapData["mearTable"] = CWriteReports::BuildMearTableHtml(m_mapTicketMearData, bDouble, dThreshold);
 
 	// 检测结论：统计低于绝缘阈值的测量值个数
-	const double dThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
 	int nLowCount = 0;
 	for (auto itSide = m_mapTicketMearData.constBegin(); itSide != m_mapTicketMearData.constEnd(); ++itSide)
 	{
@@ -2571,8 +2581,8 @@ void Insulator_Zero_Value_Detection_Robot::ShowMeasureWaitDialog(const QString& 
 	m_pMeasureWaitLabel->setText(strText);
 	m_pMeasureWaitDialog->adjustSize();
 	// 显示在主窗口最上方居中位置（模态弹窗置顶,屏蔽下层界面操作）
-	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
-		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
+	m_pMeasureWaitDialog->move(PositionDialogInVideoHeaderRegion());
+	
 	m_pMeasureWaitDialog->show();
 	m_pMeasureWaitDialog->raise();
 }
@@ -2583,8 +2593,7 @@ void Insulator_Zero_Value_Detection_Robot::UpdateMeasureWaitDialog(const QString
 		return;
 	m_pMeasureWaitLabel->setText(strText);
 	m_pMeasureWaitDialog->adjustSize();
-	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
-		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
+	m_pMeasureWaitDialog->move(PositionDialogInVideoHeaderRegion());
 }
 
 void Insulator_Zero_Value_Detection_Robot::HideMeasureWaitDialog()
@@ -2593,11 +2602,66 @@ void Insulator_Zero_Value_Detection_Robot::HideMeasureWaitDialog()
 		m_pMeasureWaitDialog->hide();
 }
 
+// 将弹窗定位并缩放到"实时视频header行"区域
+// 区域边界：上=pBInspection下缘，下=label_9上缘，左=label_47右缘，右=pushButton_2左缘
+QPoint Insulator_Zero_Value_Detection_Robot::PositionDialogInVideoHeaderRegion()
+{
+	// 将四个控件的边界坐标转换到主窗口坐标系
+	const QPoint ptTop = ui.pBInspection->mapTo(this, QPoint(0, ui.pBInspection->height()));
+	const QPoint ptLeft = ui.label_47->mapTo(this, QPoint(ui.label_47->width(), 0));
+	const QPoint ptRight = ui.pushButton_2->mapTo(this, QPoint(0, 0));
+	const QPoint ptBottom = ui.label_9->mapTo(this, QPoint(0, 0));
+
+	const int x = ptLeft.x();
+	const int y = ptTop.y();
+	const int w = ptRight.x() - ptLeft.x();
+	const int h = ptBottom.y() - ptTop.y();
+	if (w <= 0 || h <= 0) return QPoint();	// 区域无效时返回空坐标
+
+	// 转为全局屏幕坐标（弹窗为顶层窗口，无父控件）
+	const QPoint ptGlobal = this->mapToGlobal(QPoint(x, y));
+	return ptGlobal;
+}
+
+// OTA等待弹窗：懒创建，不可关闭，升级结束前拦截Esc/关闭事件
+void Insulator_Zero_Value_Detection_Robot::ShowOtaWaitDialog(const QString& strText)
+{
+	if (m_pOtaWaitDialog == nullptr)
+	{
+		m_pOtaWaitDialog = new QDialog(this);
+		m_pOtaWaitDialog->setWindowTitle(QStringLiteral("OTA升级"));
+		// 无关闭按钮，并拦截Esc/关闭事件，升级结束前不可关闭
+		m_pOtaWaitDialog->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
+		m_pOtaWaitDialog->installEventFilter(this);
+
+		m_pOtaWaitLabel = new QLabel(m_pOtaWaitDialog);
+		m_pOtaWaitLabel->setAlignment(Qt::AlignCenter);
+		m_pOtaWaitLabel->setMinimumSize(320, 40);
+		m_pOtaWaitLabel->setStyleSheet("font-size:18px;");
+		auto pLayout = new QVBoxLayout(m_pOtaWaitDialog);
+		pLayout->addWidget(m_pOtaWaitLabel);
+	}
+	m_pOtaWaitLabel->setText(strText);
+	m_pOtaWaitDialog->adjustSize();
+	// 显示在主窗口最上方居中位置
+	m_pOtaWaitDialog->move(mapToGlobal(QPoint(
+		(width() - m_pOtaWaitDialog->width()) / 2, 20)));
+	m_pOtaWaitDialog->show();
+	m_pOtaWaitDialog->raise();
+}
+
+void Insulator_Zero_Value_Detection_Robot::HideOtaWaitDialog()
+{
+	if (m_pOtaWaitDialog != nullptr)
+		m_pOtaWaitDialog->hide();
+}
+
 bool Insulator_Zero_Value_Detection_Robot::eventFilter(QObject* obj, QEvent* event)
 {
-	if (m_pMeasureWaitDialog != nullptr && obj == m_pMeasureWaitDialog)
+	// 屏蔽Esc与关闭事件:测量等待弹窗与OTA等待弹窗均只能由流程关闭
+	if ((m_pMeasureWaitDialog != nullptr && obj == m_pMeasureWaitDialog) ||
+		(m_pOtaWaitDialog != nullptr && obj == m_pOtaWaitDialog))
 	{
-		// 屏蔽Esc与关闭事件,弹窗只能由测量流程关闭
 		if (event->type() == QEvent::Close)
 			return true;
 		if (event->type() == QEvent::KeyPress &&
@@ -3525,7 +3589,12 @@ void Insulator_Zero_Value_Detection_Robot::ShowAlarmPopup(EAlarmLevel eLevel, co
 	// 限制最大宽度避免长文本拉通整屏,自适应高度后水平居中靠顶部显示
 	m_pAlarmPopupLabel->setMaximumWidth(width() * 2 / 3);
 	m_pAlarmPopupLabel->adjustSize();
-	m_pAlarmPopupLabel->move((width() - m_pAlarmPopupLabel->width()) / 2, 16);
+	QPoint ptGlobal = PositionDialogInVideoHeaderRegion();
+	// m_pAlarmPopupLabel 是主窗口的子控件，需将全局坐标转换为相对于主窗口的局部坐标
+	QPoint ptLocal = this->mapFromGlobal(ptGlobal);
+	// 仅当测量等待弹窗可见时，才在其下方偏移，避免未显示时产生错误偏移
+	int nOffsetY = (m_pMeasureWaitDialog && m_pMeasureWaitDialog->isVisible()) ? m_pMeasureWaitDialog->height() : 0;
+	m_pAlarmPopupLabel->move(ptLocal.x(), ptLocal.y() + nOffsetY);
 	m_pAlarmPopupLabel->show();
 	m_pAlarmPopupLabel->raise();
 
@@ -3640,5 +3709,87 @@ void Insulator_Zero_Value_Detection_Robot::SetVisibles(bool bVisible, int nSlice
 		{
 			label->setVisible(true);
 		}
+	}
+}
+
+// ===== OTA升级流程 =====
+
+// 升级按钮点击：选择bin文件 → 读取 → 启动OTA → 显示等待弹窗
+void Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click()
+{
+	// 防止重复点击
+	if (m_bOtaInProgress)
+		return;
+
+	// 检查控制板连接状态
+	if (!m_bControlBroadConnected)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("控制板未连接，无法升级"));
+		return;
+	}
+
+	// 选择bin升级文件
+	const QString strFilePath = QFileDialog::getOpenFileName(this,
+		QStringLiteral("选择升级文件"), QString(), QStringLiteral("Bin文件 (*.bin)"));
+	if (strFilePath.isEmpty())
+		return;
+
+	// 读取文件到字节数组
+	std::vector<uint8_t> vecFile;
+	if (!WHSD_Tools::ReadFileToVector(strFilePath.toStdString(), &vecFile) || vecFile.empty())
+	{
+		QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("升级文件读取失败或文件为空"));
+		return;
+	}
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("OTA升级开始:文件=%s, 大小=%zu字节", strFilePath.toStdString().c_str(), vecFile.size());
+
+	// 置进行中标志，禁用升级按钮
+	m_bOtaInProgress = true;
+	ui.pushButton_7->setEnabled(false);
+
+	// 显示不可关闭的等待弹窗
+	ShowOtaWaitDialog(QStringLiteral("正在升级，请勿断电..."));
+
+	// 启动OTA（协议层内部开线程分包传输）
+	m_pWHSDControlBoardProtocol->BeginOTA(vecFile);
+}
+
+// OTA状态回调（UI线程，由OtaStatusSignal队列连接触发）
+void Insulator_Zero_Value_Detection_Robot::On_OtaStatus(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex)
+{
+	switch (cStatus)
+	{
+	case 3:	// 升级完成
+	{
+		HideOtaWaitDialog();
+		m_bOtaInProgress = false;
+		ui.pushButton_7->setEnabled(true);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("OTA升级完成");
+		QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("OTA升级完成"));
+		break;
+	}
+	case 255:	// 升级失败
+	{
+		HideOtaWaitDialog();
+		m_bOtaInProgress = false;
+		ui.pushButton_7->setEnabled(true);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("OTA升级失败");
+		QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("OTA升级失败，请检查连接后重试"));
+		break;
+	}
+	case 2:	// 传输中：更新等待弹窗文本显示进度
+	{
+		if (m_pOtaWaitLabel != nullptr && m_pOtaWaitDialog != nullptr && m_pOtaWaitDialog->isVisible())
+		{
+			m_pOtaWaitLabel->setText(QStringLiteral("正在传输 %1/%2 ...").arg(nPackIndex).arg(nAllPacks));
+		}
+		break;
+	}
+	default:	// 状态1(进入OTA)等：不做处理
+		break;
 	}
 }

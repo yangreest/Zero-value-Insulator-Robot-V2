@@ -354,7 +354,8 @@ QString CWriteReports::FillHtmlTemplate(
 	return strResult;
 }
 // 生成测量数据表 HTML（行=最大片数，列=侧别×相别，双联每相拆内/外侧）
-QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble)
+// dThreshold: 绝缘阈值(MΩ)，低于此值的测量值以红色(#f56c6c)显示
+QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble, double dThreshold)
 {
 	// 列描述:侧别 + 相别 + 内外侧(双联)，列序按 JSON 存入顺序（第一层侧别，第二层相别）
 	struct ColInfo
@@ -418,18 +419,30 @@ QString CWriteReports::BuildMearTableHtml(const QJsonObject& mapTicketMearData, 
 			for (const ColInfo& col : vecCols)
 			{
 				QString strValue;
+				double dValue = 0.0;
+				bool bHasValue = false;
 				if (bDouble)
 				{
 					const int idx = 2 * (n - 1) + (col.bOutside ? 1 : 0);
 					// 已删除的点位为null空位:输出空格,保持片号对齐不错位
 					if (idx < col.arrData.size() && !col.arrData[idx].isNull())
-						strValue = QString::number(col.arrData[idx].toDouble());
+					{
+						dValue = col.arrData[idx].toDouble();
+						strValue = QString::number(dValue);
+						bHasValue = true;
+					}
 				}
 				else if (n - 1 < col.arrData.size() && !col.arrData[n - 1].isNull())
 				{
-					strValue = QString::number(col.arrData[n - 1].toDouble());
+					dValue = col.arrData[n - 1].toDouble();
+					strValue = QString::number(dValue);
+					bHasValue = true;
 				}
-				strHtml += "<td align=\"center\">" + strValue + "</td>";
+				// 低于绝缘阈值的测量值以红色显示（与界面告警红色#f56c6c一致）
+				if (bHasValue && dValue < dThreshold)
+					strHtml += "<td align=\"center\"><font color=\"#f56c6c\">" + strValue + "</font></td>";
+				else
+					strHtml += "<td align=\"center\">" + strValue + "</td>";
 			}
 			strHtml += "</tr>";
 		}
