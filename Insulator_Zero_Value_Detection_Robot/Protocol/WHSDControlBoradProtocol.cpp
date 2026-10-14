@@ -1,6 +1,8 @@
 #include "WHSDControlBoradProtocol.h"
 
 #include <thread>
+#include <limits>
+#include <chrono>
 #include <Windows.h>
 
 #include "Tools/Tools.h"
@@ -8,6 +10,8 @@
 #define DEVICE_HEART_BEAT_LEN 64
 #define MOTOR_COUNT 8
 #define OTA_PACK_LEN 128
+// OTA 事件驱动：单包 ACK 等待超时，与旧实现的 Sleep(500ms) 保持一致的重试节奏
+#define OTA_ACK_TIMEOUT_MS 500
 
 uint8_t CWHSDControlBoardProtocol::cPackNumber = 0;
 
@@ -42,11 +46,19 @@ CCalibAnswer::CCalibAnswer()
 	m_cReason = 0;
 	m_nValue1 = 0;
 	m_nValue2 = 0;
+	// V1.1：默认值与下位机上电默认保持一致，方便调用方在未命中 0x03/0x04 时直接读取
+	m_fK = DefaultK;
 }
 
 bool CCalibAnswer::IsSuccess() const
 {
 	return m_cResult == 0x01;
+}
+
+bool CCalibAnswer::IsKAnswer() const
+{
+	// V1.1：0x03 写 K、0x04 读 K 共用 m_fK 字段，其余子命令下 m_fK 无意义
+	return m_cSubCmd == 0x03 || m_cSubCmd == 0x04;
 }
 
 CControlBoardProtocolConfig::CControlBoardProtocolConfig()
@@ -208,6 +220,8 @@ CWHSDControlBoardProtocol::CWHSDControlBoardProtocol(uint16_t wHeartBeatTime)
 	m_cOTAErrorCount = 0;
 	m_nOTAPackIndex = 0;
 	m_nOTAAllPacks = 0;
+	m_nOTAExpectedAckIndex = 0;
+	m_bOTAAckReceived = false;
 	m_function_OTAStatusCallBack = nullptr;
 	m_function_SensorDataCallBack = nullptr;
 	m_function_CalibCallBack = nullptr;
@@ -313,8 +327,21 @@ bool CWHSDControlBoardProtocol::Parse()
 						{
 							if (m_vectorCmdData[0] > 0x00)
 							{
-								m_cOTAErrorCount = 0;
-								memcpy(&m_nOTAPackIndex, m_vectorCmdData.data() + 1, sizeof(uint32_t));
+								// OTA 单包应答：载荷 = 结果(1B) + 包序号(4B)
+								uint32_t nAckIndex = 0;
+								memcpy(&nAckIndex, m_vectorCmdData.data() + 1, sizeof(uint32_t));
+								{
+									std::lock_guard<std::mutex> lock(m_mutexOTA);
+									// 仅当 ACK 索引与当前已发包序号一致时才推进并唤醒，避免旧/乱序应答误发下一包
+									if (nAckIndex == m_nOTAExpectedAckIndex)
+									{
+										m_nOTAPackIndex = nAckIndex;
+										m_bOTAAckReceived = true;
+										m_cOTAErrorCount = 0;
+									}
+								}
+								// 无论是否命中期望索引都 notify：命中时发送线程立即发下一包，未命中时发送线程继续等至超时
+								m_cvOTA.notify_all();
 							}
 						}
 						break;
@@ -408,8 +435,9 @@ bool CWHSDControlBoardProtocol::Parse()
 					}
 					case 0x17:
 					{
-						// 校准命令应答：子命令 + 结果 + 原因 + 参数1(4B) + 参数2(4B)
-						// 子命令：0x05恢复默认 0x06查询原始值 0x0C读回系数 0x0A补偿验证 0x0E单点定标
+						// 校准命令应答（V1.1）：子命令 + 结果 + 原因 + 参数1(4B) [+ 参数2(4B)]
+						// 子命令：0x03写K 0x04读K 0x05恢复默认 0x06查询原始值 0x0C读回系数 0x0A补偿验证 0x0E单点定标
+						// 参数编码：0x03/0x04 为 IEEE754 float 大端（K），其余为 int32 毫值大端
 						if (m_vectorCmdData.size() < 3)
 						{
 							break;
@@ -418,10 +446,21 @@ bool CWHSDControlBoardProtocol::Parse()
 						answer.m_cSubCmd = m_vectorCmdData[0];
 						answer.m_cResult = m_vectorCmdData[1];
 						answer.m_cReason = m_vectorCmdData[2];
-						// 0x06只带参数1（原始X），其余子命令带参数1+参数2，按长度逐个取
+						// 0x06 只带参数1（原始X），0x03/0x04 成功时只带参数1（K），其余成功帧带参数1+参数2，按长度逐个取
 						if (m_vectorCmdData.size() >= 7)
 						{
-							answer.m_nValue1 = GetInt32BE(m_vectorCmdData.data() + 3);
+							if (answer.m_cSubCmd == 0x03 || answer.m_cSubCmd == 0x04)
+							{
+								// V1.1：K 为 4 字节 IEEE754 float 大端，不是 int32 毫值。
+								// m_nValue1 仍按比特原样保留（方便日志核对 float 编码），m_fK 存实际浮点值。
+								// 失败帧（如 FF FE 0B 01 17 03 00 05 28 FD FC）不带 K，size==3，此处不会进入
+								answer.m_fK = GetFloatBE(m_vectorCmdData.data() + 3);
+								answer.m_nValue1 = GetInt32BE(m_vectorCmdData.data() + 3);
+							}
+							else
+							{
+								answer.m_nValue1 = GetInt32BE(m_vectorCmdData.data() + 3);
+							}
 						}
 						if (m_vectorCmdData.size() >= 11)
 						{
@@ -620,6 +659,31 @@ int32_t CWHSDControlBoardProtocol::GetInt32BE(const uint8_t* p)
 	return static_cast<int32_t>(nRaw);
 }
 
+void CWHSDControlBoardProtocol::AppendFloatBE(std::vector<uint8_t>& data, float fValue)
+{
+	// V1.1：K 为 4 字节 IEEE754 float 大端，不是毫值整数。
+	// 用 memcpy 做 float→uint32 的位拷贝，避免严格别名与对齐问题。
+	// 例：K=10 → 0x41200000 → 41 20 00 00；K=0 → 00 00 00 00。
+	uint32_t nBits = 0;
+	memcpy(&nBits, &fValue, sizeof(nBits));
+	data.push_back(static_cast<uint8_t>((nBits >> 24) & 0xff));
+	data.push_back(static_cast<uint8_t>((nBits >> 16) & 0xff));
+	data.push_back(static_cast<uint8_t>((nBits >> 8) & 0xff));
+	data.push_back(static_cast<uint8_t>(nBits & 0xff));
+}
+
+float CWHSDControlBoardProtocol::GetFloatBE(const uint8_t* p)
+{
+	// V1.1：0x03/0x04 应答中的 K 为 4 字节 IEEE754 float 大端，位拷贝回 float
+	const uint32_t nBits = (static_cast<uint32_t>(p[0]) << 24)
+		| (static_cast<uint32_t>(p[1]) << 16)
+		| (static_cast<uint32_t>(p[2]) << 8)
+		| static_cast<uint32_t>(p[3]);
+	float fValue = 0.0f;
+	memcpy(&fValue, &nBits, sizeof(fValue));
+	return fValue;
+}
+
 std::vector<uint8_t> CWHSDControlBoardProtocol::CalibReset()
 {
 	//FF FE 09 01 17 05 23 FD FC
@@ -654,6 +718,43 @@ std::vector<uint8_t> CWHSDControlBoardProtocol::CalibSinglePoint(int32_t nStdMil
 	AppendInt32BE(cmdData, nStdMilli);
 	AppendInt32BE(cmdData, nRawMilli);
 	return GetCmdData(0x17, cmdData);
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibWriteK(float fK)
+{
+	// V1.1 §4.7 写校准系数 K（0x17/0x03）
+	// FF FE 0D 01 17 03 + K(4B IEEE754 float 大端) + CHK + FD FC
+	// K=10 时：FF FE 0D 01 17 03 41 20 00 00 86 FD FC
+	// K=0  时：FF FE 0D 01 17 03 00 00 00 00 25 FD FC（直通，不校准）
+	// K=50 时：FF FE 0D 01 17 03 42 48 00 00 AF FD FC（增益 +10%）
+	// 注意：K 是 float，不是 int32 毫值；NaN/±Inf 会被下位机以"结果00、原因05"拒绝。
+	// 立即生效，不写 Flash，掉电/复位后恢复为默认 10。
+	std::vector<uint8_t> cmdData = { 0x03 };
+	AppendFloatBE(cmdData, fK);
+	return GetCmdData(0x17, cmdData);
+}
+
+std::vector<uint8_t> CWHSDControlBoardProtocol::CalibReadK()
+{
+	// V1.1 §4.8 读校准系数 K（0x17/0x04）
+	// FF FE 09 01 17 04 22 FD FC
+	// 无参数；应答数据域为 17 + 04 + 结果 + 原因 + K(4B float 大端)。
+	// 由于 K 不落 Flash，每次上电后首次读到的必然是默认值 10。
+	return GetCmdData(0x17, { 0x04 });
+}
+
+float CWHSDControlBoardProtocol::CalibComputeKFromSinglePoint(float fX0, float fY0)
+{
+	// V1.1 §5.1 单点拉齐：把当前读数 x0 抬/压到目标 y0
+	// K = 500 × (y0 − x0) / (x0 − 500)
+	// x0 == 500 时该式无解——500 是公式不动点，任何 K 都无法改变它；
+	// 此时只能改测量链路本身。返回 NaN 让调用方显式处理，避免误下发。
+	const float fDenom = fX0 - 500.0f;
+	if (fDenom == 0.0f)
+	{
+		return std::numeric_limits<float>::quiet_NaN();
+	}
+	return 500.0f * (fY0 - fX0) / fDenom;
 }
 
 
@@ -725,6 +826,12 @@ void CWHSDControlBoardProtocol::OTAThread()
 	m_cOTAStatus = 1;
 	bool bIsNeedExit = false;
 	m_cOTAErrorCount = 0;
+	{
+		// 新一轮升级开始前重置 ACK 同步状态，避免上一轮残留的期望索引/标志干扰本次判断
+		std::lock_guard<std::mutex> lock(m_mutexOTA);
+		m_nOTAExpectedAckIndex = 0;
+		m_bOTAAckReceived = false;
+	}
 	//这是分包的逻辑
 	auto otaPack = WHSD_Tools::SplitVectorData(m_vector_OTAFile, OTA_PACK_LEN);
 	std::vector<uint8_t> packData(138);
@@ -754,10 +861,17 @@ void CWHSDControlBoardProtocol::OTAThread()
 		}
 		if (m_cOTAStatus == 2)
 		{
-			Sleep(500);
 			if (m_nOTAPackIndex < m_nOTAAllPacks)
 			{
-				uint32_t currentPackNumber = m_nOTAPackIndex + 1;
+				// 事件驱动发包：先登记期望索引、清 ACK 标志，再发送，最后在条件变量上等 ACK 或超时。
+				// ACK 命中时接收线程会推进 m_nOTAPackIndex 并唤醒，本循环下一轮直接发下一包（无需 Sleep）；
+				// 超时时 m_nOTAPackIndex 不变，下一轮重发同一包（与旧行为一致）。
+				const uint32_t currentPackNumber = m_nOTAPackIndex + 1;
+				{
+					std::lock_guard<std::mutex> lock(m_mutexOTA);
+					m_nOTAExpectedAckIndex = currentPackNumber;
+					m_bOTAAckReceived = false;
+				}
 				memcpy(packData.data() + 4, &currentPackNumber, sizeof(uint32_t));
 				packData[8] = OTA_PACK_LEN;
 				memcpy(packData.data() + 9, otaPack[m_nOTAPackIndex].data(), OTA_PACK_LEN);
@@ -769,10 +883,23 @@ void CWHSDControlBoardProtocol::OTAThread()
 				packData[packData.size() - 1] = checksum;
 				auto cmd = GetCmdData(0x0b, packData);
 				SendData(cmd.data(), cmd.size());
-				if (m_cOTAErrorCount++ > 5)
+
+				// 等 ACK：命中谓词立即返回；超时（OTA_ACK_TIMEOUT_MS）后重试当前包。
+				// 谓词内重新判定 m_bOTAAckReceived，可避免 notify 与 wait 竞态造成的信号丢失。
+				bool bAcked = false;
 				{
-					m_cOTAStatus = 255;
-					bIsNeedExit = true;
+					std::unique_lock<std::mutex> lock(m_mutexOTA);
+					bAcked = m_cvOTA.wait_for(lock, std::chrono::milliseconds(OTA_ACK_TIMEOUT_MS),
+						[this]() { return m_bOTAAckReceived; });
+				}
+				if (!bAcked)
+				{
+					// 超时才计错；与旧实现保持一致的后自增比较（>5），连续6次未得ACK则失败退出
+					if (m_cOTAErrorCount++ > 5)
+					{
+						m_cOTAStatus = 255;
+						bIsNeedExit = true;
+					}
 				}
 			}
 			else

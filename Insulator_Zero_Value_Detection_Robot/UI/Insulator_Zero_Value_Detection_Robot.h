@@ -40,6 +40,8 @@ signals:
 	void CalibMeasureValueSignal(double dValue);
 	// 0x17校准命令应答（子命令/结果/原因/参数1/参数2，参数为毫值）
 	void CalibAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, qint32 nValue1, qint32 nValue2);
+	// 0x17/0x03（写K）与 0x17/0x04（读K）应答（V1.1 新增，K 为 IEEE754 float，与毫值参数不同，单独走一个信号）
+	void CalibKAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK);
 	// OTA升级状态回调（协议线程emit，队列连接切到UI线程）
 	void OtaStatusSignal(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex);
 
@@ -127,6 +129,14 @@ private slots:
 	void On_CalibCheck_Click();
 	// 辅助：读回Flash中已存系数（0x17/0x0C）
 	void On_CalibReadCoef_Click();
+
+	// ===== 系统设置页·校准模块（V1.1 §4.7/§4.8）=====
+	// pushButton_5：读校准系数 K（0x17/0x04），应答回填 lineEdit_8
+	void On_ReadCalibK_Click();
+	// pushButton_16：写校准系数 K（0x17/0x03），K 从 lineEdit_12 取
+	void On_WriteCalibK_Click();
+	// K 应答处理（UI线程）：0x04 成功回填 lineEdit_8；0x03 成功用回显 K 同步 lineEdit_8 便于核对
+	void On_CalibKAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK);
 
 	// 等待回测结果的槽：收到一次0x0F测量值（已切到UI线程）
 	void On_CalibMeasureValue(double dValue);

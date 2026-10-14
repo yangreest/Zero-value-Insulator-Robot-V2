@@ -3,6 +3,8 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <condition_variable>
 
 class CSensorData
 {
@@ -50,8 +52,11 @@ public:
 };
 
 /// <summary>
-/// 0x17 校准命令应答（对应《单点定标协议与流程 V1.0》）
-/// 应答数据域统一为：子命令 + 结果 + 原因 + 参数1(4B) + 参数2(4B)，参数均为int32毫值大端
+/// 0x17 校准命令应答（对应《单点定标协议与流程 V1.1》）
+/// 应答数据域：子命令 + 结果 + 原因 + 参数1(4B) [+ 参数2(4B)]
+/// 参数1/2 除 0x03、0x04 外均为 int32 毫值大端；
+/// 0x03（写 K）与 0x04（读 K）V1.1 起参数1 为 4 字节 IEEE754 float 大端，
+/// 通过 m_fK 字段单独回读，m_nValue1 仍保留原始 32 位比特以便回显核对。
 /// </summary>
 class CCalibAnswer
 {
@@ -59,7 +64,11 @@ public:
 	CCalibAnswer();
 
 	/// <summary>
-	/// 子命令：0x05恢复默认 0x06查询原始值 0x0C读回系数 0x0A补偿验证 0x0E单点定标
+	/// 子命令：
+	/// 0x03 写校准系数 K（V1.1 语义变更，原为写两点线性 k/b）
+	/// 0x04 读校准系数 K（V1.1 语义变更，原为读两点线性 k/b）
+	/// 0x05 恢复默认  0x06 查询原始值  0x0C 读回系数
+	/// 0x0A 补偿验证  0x0E 单点定标
 	/// </summary>
 	uint8_t m_cSubCmd;
 
@@ -69,12 +78,13 @@ public:
 	uint8_t m_cResult;
 
 	/// <summary>
-	/// 失败原因：0x01原始值已超时 0x04Flash写失败 0x05参数长度/格式错误 0x09参数非法
+	/// 失败原因：0x01原始值已超时 0x04Flash写失败 0x05参数长度/格式错误（含 K 为 NaN/±Inf）0x09参数非法
 	/// </summary>
 	uint8_t m_cReason;
 
 	/// <summary>
-	/// 参数1（毫值）：0x05为k，0x06为原始X，0x0C为a，0x0A为原始值，0x0E为a
+	/// 参数1（毫值）：0x05为k，0x06为原始X，0x0C为a，0x0A为原始值，0x0E为a；
+	/// 0x03/0x04 时为 K 的 4 字节 IEEE754 比特原样（请优先使用 m_fK）
 	/// </summary>
 	int32_t m_nValue1;
 
@@ -83,7 +93,24 @@ public:
 	/// </summary>
 	int32_t m_nValue2;
 
+	/// <summary>
+	/// 校准系数 K（V1.1 新增，仅当 m_cSubCmd 为 0x03 或 0x04 且成功时有效）
+	/// K 上电默认 10.0，仅存 RAM、掉电/复位后恢复为 10；
+	/// 校准模型：校准值 = 测量值 − K × (500 − 测量值) / 500
+	/// </summary>
+	float m_fK;
+
+	/// <summary>
+	/// K 的上电默认值（V1.1）
+	/// </summary>
+	static constexpr float DefaultK = 10.0f;
+
 	bool IsSuccess() const;
+
+	/// <summary>
+	/// 当前应答是否为 K 的写入/读回（0x03/0x04）
+	/// </summary>
+	bool IsKAnswer() const;
 };
 
 class CControlBoardProtocolConfig
@@ -322,10 +349,42 @@ public:
 	/// 单点定标（0x17/0x0E，核心命令）：下发"标准值 + 实测原始值"，
 	/// 固件自动计算补偿系数c并立即写入Flash（擦写需1~2秒，应答超时建议≥3秒）。
 	/// 参数必须正好8字节，后发覆盖先发，无须先清除。
+	/// V1.1 注意：本命令仍会成功写 Flash 并回显系数，但被 §4.7 增益校准恒生效遮蔽，
+	/// 0x0E 算出的 a/b 不会改变 0x0F 回报值；如需实际生效请改用 CalibWriteK。
 	/// </summary>
 	/// <param name="nStdMilli">标准值（int32毫值，如500 MΩ传500000）</param>
 	/// <param name="nRawMilli">实测原始值（int32毫值，必须小于标准值）</param>
 	static std::vector<uint8_t> CalibSinglePoint(int32_t nStdMilli, int32_t nRawMilli);
+
+	/// <summary>
+	/// 写校准系数 K（0x17/0x03，V1.1 新增，当前主用）
+	/// 数据域：17 + 03 + K(4B IEEE754 float 大端)，共 4 字节参数。
+	/// 完整帧示例（K = 10）：FF FE 0D 01 17 03 41 20 00 00 86 FD FC
+	/// 固件不做任何二次加工，写什么就是什么，立即生效；不写 Flash，掉电/复位后恢复为默认 10。
+	/// 校准模型：校准值 = 测量值 − K × (500 − 测量值) / 500，展开为 (1 + K/500)×测量值 − K。
+	/// K = 0 表示直通（不校准）；K 允许为负与小数；K = −500 为退化值（增益为 0），勿使用。
+	/// V1.1 语义变更：原为写两点线性系数 k/b（数据域 8 字节），旧格式不再支持。
+	/// </summary>
+	/// <param name="fK">校准系数（float，NaN/±Inf 会被下位机拒绝，返回结果 00、原因 05）</param>
+	static std::vector<uint8_t> CalibWriteK(float fK);
+
+	/// <summary>
+	/// 读校准系数 K（0x17/0x04，V1.1 新增）
+	/// 无参数。应答数据域：17 + 04 + 结果 + 原因 + K(4B IEEE754 float 大端)。
+	/// 完整帧示例：FF FE 09 01 17 04 22 FD FC
+	/// 由于 K 不落 Flash，每次上电后首次读到的必然是默认值 10。
+	/// 若读回值与下发值不符，说明中途发生过复位/掉电，需重新下发 CalibWriteK。
+	/// V1.1 语义变更：原为读两点线性系数 k/b（应答 8 字节），现改为只回读 K（应答 4 字节）。
+	/// </summary>
+	static std::vector<uint8_t> CalibReadK();
+
+	/// <summary>
+	/// 单点拉齐辅助计算（V1.1 §5.1）：由当前读数 x0 与期望目标 y0 反解 K，
+	/// K = 500 × (y0 − x0) / (x0 − 500)，要求 x0 ≠ 500（500 是公式不动点，无解）。
+	/// 参数为 MΩ 物理值（非毫值），返回值可直接送入 CalibWriteK。
+	/// x0 == 500 时返回 NaN，调用方需自行判断。
+	/// </summary>
+	static float CalibComputeKFromSinglePoint(float fX0, float fY0);
 
 private:
 	static std::vector<uint8_t> GetCmdData(uint8_t cmd, const std::vector<uint8_t>& cmdData);
@@ -339,6 +398,16 @@ private:
 	/// 从缓冲区按大端读取一个int32（协议规定多字节整数一律大端、X值有符号）
 	/// </summary>
 	static int32_t GetInt32BE(const uint8_t* p);
+
+	/// <summary>
+	/// 按大端追加一个 IEEE754 float 到数据域（V1.1 校准系数 K 专用，非毫值整数）
+	/// </summary>
+	static void AppendFloatBE(std::vector<uint8_t>& data, float fValue);
+
+	/// <summary>
+	/// 从缓冲区按大端读取一个 IEEE754 float（V1.1 校准系数 K 应答解析专用）
+	/// </summary>
+	static float GetFloatBE(const uint8_t* p);
 
 	static uint8_t cPackNumber;
 
@@ -396,6 +465,18 @@ private:
 	uint32_t m_nOTAAllPacks;
 
 	uint32_t m_nOTAPackIndex;
+
+	// ===== OTA 事件驱动同步（V1.1）=====
+	// 旧实现为固定 Sleep(500ms) 轮询，即使 ACK 已到达也要等到下一个周期才发下一包；
+	// 现改为条件变量等待：0x0b ACK 到达时由接收线程唤醒，发送线程立即发下一包，
+	// 超时（OTA_ACK_TIMEOUT_MS）时仍按原节奏重发当前包，保持与旧行为一致的重试容错。
+	std::mutex m_mutexOTA;
+	std::condition_variable m_cvOTA;
+	// 当前已发、等待 ACK 的包序号（1-based）；接收到的 0x0b 应答必须与之一致才视为有效 ACK，
+	// 避免旧/乱序应答误推进下一包
+	uint32_t m_nOTAExpectedAckIndex;
+	// 当前包的 ACK 是否已到达（仅 m_mutexOTA 保护下读写）
+	bool m_bOTAAckReceived;
 
 	CSensorData m_memCSensorData;
 };

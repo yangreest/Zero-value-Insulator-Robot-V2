@@ -445,11 +445,17 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pushButton_CalibCheck, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibCheck_Click);
 	connect(ui.pushButton_CalibReadCoef, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibReadCoef_Click);
 
+	// 系统设置页·校准模块（V1.1 §4.7/§4.8）：pushButton_5 读 K→lineEdit_8，pushButton_16 从 lineEdit_12 写 K
+	connect(ui.pushButton_5, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ReadCalibK_Click);
+	connect(ui.pushButton_16, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_WriteCalibK_Click);
+
 	// 等待回测结果：下位机应答/回报在协议线程回调，用队列连接切到UI线程再推进流程
 	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibMeasureValueSignal,
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibMeasureValue, Qt::QueuedConnection);
 	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibAnswerSignal,
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibAnswer, Qt::QueuedConnection);
+	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibKAnswerSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_CalibKAnswer, Qt::QueuedConnection);
 
 	// OTA升级：升级按钮点击 + 状态回调（协议线程emit，队列连接切到UI线程）
 	connect(ui.pushButton_7, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click);
@@ -887,6 +893,12 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 void Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer(const CCalibAnswer& answer)
 {
 	// 回调运行在协议线程，不得直接操作界面，发信号由队列连接切到UI线程
+	if (answer.IsKAnswer())
+	{
+		// V1.1 §4.7/§4.8：0x03 写 K、0x04 读 K，K 为 IEEE754 float，与毫值参数不同，走独立信号
+		emit CalibKAnswerSignal(answer.m_cSubCmd, answer.m_cResult, answer.m_cReason, answer.m_fK);
+		return;
+	}
 	emit CalibAnswerSignal(answer.m_cSubCmd, answer.m_cResult, answer.m_cReason,
 		answer.m_nValue1, answer.m_nValue2);
 }
@@ -1285,6 +1297,121 @@ void Insulator_Zero_Value_Detection_Robot::On_CalibReadCoef_Click()
 	if (!CalibStartWait(eCalibWaitAux, CALIB_CMD_TIMEOUT_MS))
 		return;
 	CalibSendFrame(CWHSDControlBoardProtocol::CalibReadCoef());
+}
+
+// ===== 系统设置页·校准模块 K 读写（V1.1 §4.7/§4.8）=====
+// 与groupBox_3的单点定标流程互斥：K 读写不走 CalibStartWait 状态机，采用发后自恢复按钮的轻量模式，
+// 避免与定标流程争抢 m_eCalibStep；若当前处于定标流程中则直接拒绝并提示。
+
+void Insulator_Zero_Value_Detection_Robot::On_ReadCalibK_Click()
+{
+	// V1.1 §4.8：读校准系数 K（0x17/0x04），无参数；
+	// 完整帧 FF FE 09 01 17 04 22 FD FC；应答中的 K 经 CalibKAnswerSignal 回到 UI 线程后回填 lineEdit_8。
+	// K 不落 Flash，上电后首次读到的必为默认 10；若与已下发值不符说明中途发生过复位/掉电。
+	if (m_pComDevice == nullptr || !m_bControlBroadConnected)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("控制板未连接，无法读取校准系数 K"));
+		return;
+	}
+	if (m_eCalibStep != eCalibIdle)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("单点定标流程进行中，请等待完成后再操作"));
+		return;
+	}
+
+	ui.pushButton_5->setEnabled(false);
+	ui.lineEdit_8->setText(QStringLiteral("读取中..."));
+	auto frame = CWHSDControlBoardProtocol::CalibReadK();
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("下发读K(0x17/0x04)");
+	m_pComDevice->Write(frame.data(), frame.size());
+	// 兜底恢复按钮与提示文本，避免下位机无应答时按钮永久禁用
+	QTimer::singleShot(5000, this, [this]() {
+		ui.pushButton_5->setEnabled(true);
+		if (ui.lineEdit_8->text() == QStringLiteral("读取中..."))
+			ui.lineEdit_8->setText(QStringLiteral("读取超时"));
+		});
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_WriteCalibK_Click()
+{
+	// V1.1 §4.7：写校准系数 K（0x17/0x03），K 为 4 字节 IEEE754 float 大端，不是毫值整数；
+	// 完整帧示例（K=10）FF FE 0D 01 17 03 41 20 00 00 86 FD FC；固件不二次加工，写什么就是什么，
+	// 立即生效；不写 Flash，掉电/复位后恢复为默认 10。
+	if (m_pComDevice == nullptr || !m_bControlBroadConnected)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("控制板未连接，无法写入校准系数 K"));
+		return;
+	}
+	if (m_eCalibStep != eCalibIdle)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("单点定标流程进行中，请等待完成后再操作"));
+		return;
+	}
+
+	bool bOk = false;
+	const float fK = ui.lineEdit_12->text().trimmed().toFloat(&bOk);
+	// 上位机先拦一道非法值：NaN/±Inf 下位机会以"结果00、原因05"拒绝，K=−500 为退化值（增益0）会把任意输入压成500
+	if (!bOk || std::isnan(fK) || std::isinf(fK))
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"),
+			QStringLiteral("校准系数 K 非法：请输入一个有效浮点数（NaN / ±Inf 会被下位机拒绝）"));
+		return;
+	}
+	if (qFuzzyCompare(fK, -500.0f))
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"),
+			QStringLiteral("K = -500 为退化值（增益 1 + K/500 = 0），会把任意输入压成 500，禁止下发"));
+		return;
+	}
+
+	ui.pushButton_16->setEnabled(false);
+	auto frame = CWHSDControlBoardProtocol::CalibWriteK(fK);
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write(QStringLiteral("下发写K(0x17/0x03) K=%1").arg(static_cast<double>(fK), 0, 'f', 4).toStdString());
+	m_pComDevice->Write(frame.data(), frame.size());
+	// 0x03 不写 Flash，应答立即返回（无 0x0E 那样的 1~2 秒延迟），5 秒兜底已足
+	QTimer::singleShot(5000, this, [this]() { ui.pushButton_16->setEnabled(true); });
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibKAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK)
+{
+	// UI 线程：处理 0x03/0x04 应答，不介入定标流程状态机（m_eCalibStep），只同步 lineEdit_8 与设备日志
+	ui.pushButton_5->setEnabled(true);
+	ui.pushButton_16->setEnabled(true);
+
+	const bool bSuccess = (cResult == 0x01);
+	const bool bIsWrite = (cSubCmd == 0x03);
+	const QString strSub = bIsWrite ? QStringLiteral("写K(0x17/0x03)") : QStringLiteral("读K(0x17/0x04)");
+	if (bSuccess)
+	{
+		// 写 K 成功时用回显值同步 lineEdit_8，确保界面展示的是下位机实际生效的 K，而非本地输入
+		const double dK = static_cast<double>(fK);
+		ui.lineEdit_8->setText(QString::number(dK, 'f', 4));
+		const QString strMsg = QStringLiteral("%1成功，当前 K=%2").arg(strSub).arg(dK, 0, 'f', 4);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write(strMsg.toStdString());
+	}
+	else
+	{
+		// 失败帧不带 K（例 FF FE 0B 01 17 03 00 05 28 FD FC），保留 lineEdit_8 原值，只提示失败原因
+		QString strReason;
+		switch (cReason)
+		{
+		case 0x05:
+			strReason = QStringLiteral("参数长度/格式错误（数据域不足5字节，或 K 为 NaN / ±Inf）");
+			break;
+		default:
+			strReason = QStringLiteral("未知原因码 0x%1").arg(cReason, 2, 16, QLatin1Char('0')).toUpper();
+			break;
+		}
+		if (ui.lineEdit_8->text() == QStringLiteral("读取中..."))
+			ui.lineEdit_8->setText(QStringLiteral("读取失败"));
+		const QString strMsg = QStringLiteral("%1失败：%2").arg(strSub).arg(strReason);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write(strMsg.toStdString());
+		QMessageBox::warning(this, QStringLiteral("提示"), strMsg);
+	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::On_CalibAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason,
@@ -3736,7 +3863,7 @@ void Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click()
 
 	// 读取文件到字节数组
 	std::vector<uint8_t> vecFile;
-	if (!WHSD_Tools::ReadFileToVector(strFilePath.toStdString(), &vecFile) || vecFile.empty())
+	if (!WHSD_Tools::ReadFileToVector(strFilePath.toLocal8Bit().toStdString(), &vecFile) || vecFile.empty())
 	{
 		QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("升级文件读取失败或文件为空"));
 		return;
