@@ -1,4 +1,7 @@
 #include <io.h>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 #include "WriteLogIns.h"
 
 //CWriteLogIns
@@ -7,18 +10,16 @@ CWriteLogIns::CWriteLogIns(
 	const string& strPath,
 	int dwMaxRowCount, int dwMaxColCount,
 	int nSync)
-	: m_strFileName(strPath),
-	m_dwMaxRowCount(dwMaxRowCount), m_dwMaxColCount(dwMaxColCount), m_nSync(nSync)
+	: m_nCurSeq(1), m_dwMaxColCount((DWORD)dwMaxColCount), m_nSync(nSync)
 {
-	m_dwMaxRowCount = max(1, m_dwMaxRowCount);
-	m_dwMaxRowCount = min(MaxRowCount, m_dwMaxRowCount);
+	//dwMaxRowCount 为历史 API 保留参数，当前滚动实现按大小+日期分片，不再依赖行数
+	(void)dwMaxRowCount;
 
-	m_dwMaxColCount = max(CLogHead::HeadLen, m_dwMaxColCount);
-	m_dwMaxColCount = max(g_nMsgHeadLen + g_nMsgTailLen, m_dwMaxColCount);
-	m_dwMaxColCount = min(m_dwMaxColCount, m_dwMaxColCount);
+	//单条消息至少留出 64 字节，最大不超过 8 KB，避免异常入参
+	if (m_dwMaxColCount < 64) m_dwMaxColCount = 64;
+	if (m_dwMaxColCount > 8192) m_dwMaxColCount = 8192;
 
-	m_LogHead.Initialize(m_dwMaxRowCount, m_dwMaxColCount, 0, 1);
-
+	ParsePath(strPath);
 	InitDirectory();
 
 	//
@@ -26,18 +27,16 @@ CWriteLogIns::CWriteLogIns(
 	m_hEventWrite = NULL;
 	m_hEventQuitWrite = NULL;
 
-	//
-	m_acMsgBuf_OneLine = new char[m_dwMaxColCount];
-	m_acMsgBuf_MultiLine = new char[MaxRowCount_OneChunk * m_dwMaxColCount];
+	//定位当前应写入的分片文件
+	SYSTEMTIME now;
+	GetLocalTime(&now);
+	m_strCurDate = FormatDate(now);
+	m_nCurSeq = FindInitialSeq(m_strCurDate);
+	m_strCurFilePath = BuildFilePath(m_strCurDate, m_nCurSeq);
 }
 
 CWriteLogIns::~CWriteLogIns()
 {
-	delete[] m_acMsgBuf_OneLine;
-	m_acMsgBuf_OneLine = NULL;
-
-	delete[] m_acMsgBuf_MultiLine;
-	m_acMsgBuf_MultiLine = NULL;
 }
 
 void CWriteLogIns::BeginWork()
@@ -46,12 +45,16 @@ void CWriteLogIns::BeginWork()
 	m_hEventQuitWrite = CreateEvent(NULL, FALSE, FALSE, NULL);
 	m_hEventWrite = CreateEvent(NULL, FALSE, FALSE, NULL);
 	m_pThreadWrite = new std::thread(&CWriteLogIns::FuncWrite, this);
-	//m_hThreadWrite = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)(&FuncWrite), this, 0, 0);
 }
 
 void CWriteLogIns::EndWork()
 {
-	//1.
+	if (m_hEventQuitWrite == NULL || m_pThreadWrite == NULL)
+	{
+		return;
+	}
+
+	//1.通知写线程退出，并把尚未落盘的消息 flush 一次
 	SetEvent(m_hEventQuitWrite);
 	m_pThreadWrite->join();
 
@@ -61,6 +64,21 @@ void CWriteLogIns::EndWork()
 
 	m_hEventQuitWrite = NULL;
 	m_hEventWrite = NULL;
+	m_pThreadWrite = NULL;
+
+	//退出前把残留消息同步写入，避免丢日志
+	m_csLogMessages.Lock();
+	{
+		m_vecMessages_Write_Sync = m_vecMessages_Chunk;
+		m_vecMessages_Chunk.clear();
+	}
+	m_csLogMessages.UnLock();
+
+	if (!m_vecMessages_Write_Sync.empty())
+	{
+		Write_Multi(m_vecMessages_Write_Sync);
+		m_vecMessages_Write_Sync.clear();
+	}
 }
 
 void CWriteLogIns::FuncWrite()
@@ -92,42 +110,156 @@ void CWriteLogIns::FuncWrite()
 	}
 }
 
+void CWriteLogIns::ParsePath(const string& strPath)
+{
+	size_t nSlash = strPath.find_last_of("\\/");
+	if (nSlash == string::npos)
+	{
+		m_strDir = "";
+		m_strBaseName = strPath;
+	}
+	else
+	{
+		m_strDir = strPath.substr(0, nSlash + 1);
+		m_strBaseName = strPath.substr(nSlash + 1);
+	}
+
+	size_t nDot = m_strBaseName.find_last_of('.');
+	if (nDot != string::npos && nDot > 0)
+	{
+		m_strExt = m_strBaseName.substr(nDot);
+		m_strBaseName = m_strBaseName.substr(0, nDot);
+	}
+	else
+	{
+		m_strExt = ".log";
+	}
+
+	if (m_strBaseName.empty())
+	{
+		m_strBaseName = "Log";
+	}
+}
+
 void CWriteLogIns::InitDirectory()
 {
-	size_t nFlg = m_strFileName.rfind("\\");
-	string strTmp = m_strFileName.substr(0, nFlg + 1);
-
-	if (nFlg != string::npos)
+	if (m_strDir.empty())
 	{
-		const char* pcPath = strTmp.c_str();
-		if ((_access(pcPath, 0)) == -1)
+		return;
+	}
+
+	const char* pcPath = m_strDir.c_str();
+	if ((_access(pcPath, 0)) == -1)
+	{
+		char FilePath[MAX_PATH] = "";
+
+		for (int nIndex = 0; nIndex < MAX_PATH; ++nIndex)
 		{
-			char FilePath[MAX_PATH] = "";
-
-			for (int nIndex = 0; nIndex < MAX_PATH; ++nIndex)
+			if (pcPath[nIndex] == 0)
 			{
-				if (pcPath[nIndex] == 0)
-				{
-					break;
-				}
-
-				if (pcPath[nIndex] == '\\' || pcPath[nIndex] == '/')
-				{
-					DWORD dwAttributesA = GetFileAttributesA(FilePath);
-					if (dwAttributesA == 0xFFFFFFFF) //目录不存在则创建
-					{
-						CreateDirectoryA(FilePath, NULL);
-					}
-				}
-				FilePath[nIndex] = pcPath[nIndex];
+				break;
 			}
+
+			if (pcPath[nIndex] == '\\' || pcPath[nIndex] == '/')
+			{
+				DWORD dwAttributesA = GetFileAttributesA(FilePath);
+				if (dwAttributesA == 0xFFFFFFFF && FilePath[0] != 0) //目录不存在则创建
+				{
+					CreateDirectoryA(FilePath, NULL);
+				}
+			}
+			FilePath[nIndex] = pcPath[nIndex];
+			FilePath[nIndex + 1] = 0;
 		}
+
+		//最后一层目录（末尾可能没有分隔符）
+		DWORD dwAttr = GetFileAttributesA(m_strDir.c_str());
+		if (dwAttr == 0xFFFFFFFF)
+		{
+			CreateDirectoryA(m_strDir.c_str(), NULL);
+		}
+	}
+}
+
+string CWriteLogIns::FormatDate(const SYSTEMTIME& t) const
+{
+	char buf[16] = "";
+	sprintf_s(buf, sizeof(buf), "%04d%02d%02d", t.wYear, t.wMonth, t.wDay);
+	return string(buf);
+}
+
+string CWriteLogIns::BuildFilePath(const string& strDate, int nSeq) const
+{
+	std::ostringstream oss;
+	oss << m_strDir << m_strBaseName << "_" << strDate << "_"
+		<< std::setw(3) << std::setfill('0') << nSeq << m_strExt;
+	return oss.str();
+}
+
+DWORD CWriteLogIns::GetFileSizeByName(const string& strPath) const
+{
+	WIN32_FILE_ATTRIBUTE_DATA fad;
+	memset(&fad, 0, sizeof(fad));
+	if (!GetFileAttributesExA(strPath.c_str(), GetFileExInfoStandard, &fad))
+	{
+		return 0;
+	}
+	return fad.nFileSizeLow;
+}
+
+int CWriteLogIns::FindInitialSeq(const string& strDate) const
+{
+	for (int seq = 1; seq <= MaxSeqPerDay; ++seq)
+	{
+		string path = BuildFilePath(strDate, seq);
+		if ((_access(path.c_str(), 0)) != 0)
+		{
+			//文件不存在，直接从该序号开始新建
+			return seq;
+		}
+
+		//文件已存在，若仍未写满则继续追加
+		DWORD sz = GetFileSizeByName(path);
+		if (sz < MaxFileSize)
+		{
+			return seq;
+		}
+	}
+	return MaxSeqPerDay;
+}
+
+void CWriteLogIns::RotateIfNeeded(const SYSTEMTIME& now, size_t nAppendBytes)
+{
+	string strDate = FormatDate(now);
+	if (strDate != m_strCurDate)
+	{
+		//跨天：切到新一天的首个可用分片
+		m_strCurDate = strDate;
+		m_nCurSeq = FindInitialSeq(strDate);
+		m_strCurFilePath = BuildFilePath(m_strCurDate, m_nCurSeq);
+		return;
+	}
+
+	DWORD sz = GetFileSizeByName(m_strCurFilePath);
+	if (sz > 0 && ((ULONGLONG)sz + (ULONGLONG)nAppendBytes) > (ULONGLONG)MaxFileSize)
+	{
+		//当前分片再写这批就会超过 1 MB，切到下一个分片
+		if (m_nCurSeq < MaxSeqPerDay)
+		{
+			++m_nCurSeq;
+		}
+		m_strCurFilePath = BuildFilePath(m_strCurDate, m_nCurSeq);
 	}
 }
 
 void CWriteLogIns::Write(const char* szMessage, int nSync/* = 0*/)
 {
-	CLogInfo logInfo(szMessage, m_dwMaxColCount);
+	if (szMessage == NULL)
+	{
+		return;
+	}
+
+	CLogInfo logInfo(szMessage, (int)m_dwMaxColCount);
 
 	m_csLogMessages.Lock();
 	{
@@ -154,7 +286,10 @@ void CWriteLogIns::Write(const char* szMessage, int nSync/* = 0*/)
 	}
 	else
 	{
-		SetEvent(m_hEventWrite);
+		if (m_hEventWrite != NULL)
+		{
+			SetEvent(m_hEventWrite);
+		}
 	}
 }
 
@@ -170,252 +305,49 @@ UINT CWriteLogIns::Write_Multi(const vector<CLogInfo>& vecMessages)
 	m_CS.Lock();
 	do
 	{
-		//2.打开文件
-		FILE* hFile = NULL;
-		errno_t err;
-		if (::_access(m_strFileName.c_str(), 0))
+		//1.先把本批消息拼成一个完整缓冲区，方便一次性追加写入
+		std::string strBuf;
+		strBuf.reserve(vecMessages.size() * 96);
+
+		for (size_t i = 0; i < vecMessages.size(); ++i)
 		{
-			err = fopen_s(&hFile, m_strFileName.c_str(), "a+");
-			if (err != 0)
+			const CLogInfo& logInfo = vecMessages[i];
+
+			string strMsg = logInfo.m_strMessage;
+			if ((DWORD)strMsg.length() > m_dwMaxColCount)
 			{
-				uiFlg = LE_Open;
-				break;
+				strMsg = strMsg.substr(0, m_dwMaxColCount);
+				uiFlg = LE_Overflow;
 			}
 
-			fclose(hFile);
-			hFile = NULL;
+			char head[64] = "";
+			sprintf_s(head, sizeof(head), "[%04d-%02d-%02d %02d:%02d:%02d:%03d] ",
+				logInfo.m_timeMsg.wYear, logInfo.m_timeMsg.wMonth, logInfo.m_timeMsg.wDay,
+				logInfo.m_timeMsg.wHour, logInfo.m_timeMsg.wMinute, logInfo.m_timeMsg.wSecond,
+				logInfo.m_timeMsg.wMilliseconds);
+
+			strBuf.append(head);
+			strBuf.append(strMsg);
+			strBuf.append("\r\n");
 		}
 
-		err = fopen_s(&hFile, m_strFileName.c_str(), "rb+");
-		if (err != 0 ||
-			hFile == NULL)
+		//2.按最新一条消息的时间决定是否切换分片
+		RotateIfNeeded(vecMessages.back().m_timeMsg, strBuf.size());
+
+		//3.以追加二进制方式打开当前分片文件
+		FILE* hFile = NULL;
+		errno_t err = fopen_s(&hFile, m_strCurFilePath.c_str(), "ab");
+		if (err != 0 || hFile == NULL)
 		{
 			uiFlg = LE_Open;
 			break;
 		}
 
-		//3.查找文件头
-		bool bEraseFile = true;
-
-		fseek(hFile, 0, SEEK_END);
-		LONG lFileSize = ftell(hFile);
-		if (lFileSize > 0)
-		{
-			//3.1 检查文件头信息
-			fseek(hFile, 0, SEEK_SET);
-			size_t nHeadLen = fread(m_acMsgBuf_OneLine, 1, CLogHead::HeadLen, hFile);
-
-			if (nHeadLen == CLogHead::HeadLen)
-			{
-				if (m_LogHead.InitializeFromFile(m_acMsgBuf_OneLine))
-				{
-					bEraseFile = false;
-				}
-			}
-		}
-		else
-		{
-			bEraseFile = false;
-
-			m_LogHead.Initialize(m_dwMaxRowCount, m_dwMaxColCount, 0, 1);
-		}
-
-		//3.2
-		if (bEraseFile)
-		{
-			fclose(hFile);
-			hFile = NULL;
-
-			err = fopen_s(&hFile, m_strFileName.c_str(), "wb+");
-			if (err != 0 ||
-				hFile == NULL)
-			{
-				uiFlg = LE_Open;
-				break;
-			}
-
-			m_LogHead.Initialize(m_dwMaxRowCount, m_dwMaxColCount, 0, 1);
-		}
-
-		//4. 更新头
-		m_LogHead.GoToNextLine(vecMessages.size());
-
-		m_LogHead.GenerateString(m_acMsgBuf_OneLine, m_dwMaxColCount);
-
-		fseek(hFile, 0, SEEK_SET);
-		fwrite(m_acMsgBuf_OneLine, m_dwMaxColCount, 1, hFile);
-
-		//5.写入内容
-		int nPos = 0;
-
-		int nCurLine = m_LogHead.m_nCurLine;
-		int nFirstLine = m_LogHead.m_nCurLine;
-		int nCount = 0;
-
-		for (int i = 0; i < vecMessages.size(); ++i)
-		{
-			const CLogInfo& logInfo = vecMessages[i];
-			string strTmp = logInfo.m_strMessage;
-			SYSTEMTIME systime = logInfo.m_timeMsg;
-
-			int nLen = strTmp.length();
-			if (m_dwMaxColCount < nLen + g_nMsgHeadLen + g_nMsgTailLen)
-			{
-				strTmp = strTmp.substr(0, m_dwMaxColCount - g_nMsgHeadLen - g_nMsgTailLen);
-				nLen = m_dwMaxColCount - g_nMsgHeadLen - g_nMsgTailLen;
-
-				uiFlg = LE_Overflow;
-			}
-
-			sprintf_s(m_acMsgBuf_OneLine, m_dwMaxColCount, g_szMsgHeadFormat,
-				nCurLine,
-				systime.wYear, systime.wMonth, systime.wDay,
-				systime.wHour, systime.wMinute, systime.wSecond, systime.wMilliseconds);
-			memcpy(m_acMsgBuf_OneLine + g_nMsgHeadLen, strTmp.c_str(), nLen);
-			memset(m_acMsgBuf_OneLine + g_nMsgHeadLen + nLen, ' ',
-				m_dwMaxColCount - g_nMsgHeadLen - nLen - g_nMsgTailLen);
-			memcpy(m_acMsgBuf_OneLine + m_dwMaxColCount - g_nMsgTailLen, g_szMsgTail, g_nMsgTailLen);
-
-			memcpy(m_acMsgBuf_MultiLine + nPos, m_acMsgBuf_OneLine, m_dwMaxColCount);
-			nPos += m_dwMaxColCount;
-
-			++nCount;
-
-			if ((nCurLine % m_dwMaxRowCount) == 0 ||
-				nCount == MaxRowCount_OneChunk)
-			{
-				fseek(hFile, nFirstLine * m_dwMaxColCount, SEEK_SET);
-				fwrite(m_acMsgBuf_MultiLine, 1, nCount * m_dwMaxColCount, hFile);
-
-				nPos = 0;
-
-				nFirstLine = nCurLine + 1;
-				nFirstLine %= m_dwMaxRowCount;
-				if (nFirstLine == 0)
-				{
-					nFirstLine = m_dwMaxRowCount;
-				}
-
-				nCount = 0;
-			}
-
-			++nCurLine;
-			nCurLine %= m_dwMaxRowCount;
-			if (nCurLine == 0)
-			{
-				nCurLine = m_dwMaxRowCount;
-			}
-		}
-
-		if (nCount > 0)
-		{
-			fseek(hFile, nFirstLine * m_dwMaxColCount, SEEK_SET);
-			fwrite(m_acMsgBuf_MultiLine, 1, nCount * m_dwMaxColCount, hFile);
-		}
-
+		fwrite(strBuf.data(), 1, strBuf.size(), hFile);
+		fflush(hFile);
 		fclose(hFile);
 	} while (0);
 	m_CS.UnLock();
 
 	return uiFlg;
-}
-
-//CLogHead
-///////////////////////////////////////////////////////////////////////////////////////////////////
-CLogHead::CLogHead()
-{
-	m_nMaxLineNum = 100;
-	m_nMaxColNum = 256;
-	m_nNextLine = 1;
-	m_nCurLine = 0;
-}
-
-CLogHead::~CLogHead()
-{
-}
-
-void CLogHead::Initialize(int nMaxLineNum, int nMaxColNum, int nCurLine, int nNextLine)
-{
-	m_nMaxLineNum = nMaxLineNum;
-	m_nMaxColNum = nMaxColNum;
-	m_nCurLine = nCurLine;
-	m_nNextLine = nNextLine;
-}
-
-void CLogHead::GoToNextLine(int nStep)
-{
-	m_nCurLine = m_nNextLine;
-
-	m_nNextLine += nStep;
-	m_nNextLine %= m_nMaxLineNum;
-	if (m_nNextLine == 0)
-	{
-		m_nNextLine = m_nMaxLineNum;
-	}
-}
-
-bool CLogHead::InitializeFromFile(const char* szLine)
-{
-	char szTemp[LineBitCount + 1] = "";
-
-	if (m_nCurLine == 0)
-	{
-		memcpy(szTemp, szLine, LineBitCount);
-		if (m_nMaxLineNum != atoi(szTemp))
-		{
-			return false;
-		}
-
-		memcpy(szTemp, szLine + (LineBitCount + 1), LineBitCount);
-		m_nCurLine = atoi(szTemp);
-
-		memcpy(szTemp, szLine + (LineBitCount + 1) * 2, LineBitCount);
-		m_nNextLine = atoi(szTemp);
-
-		memcpy(szTemp, szLine + (LineBitCount + 1) * 3, LineBitCount);
-		if (m_nMaxColNum != atoi(szTemp))
-		{
-			return false;
-		}
-	}
-	else
-	{
-		memcpy(szTemp, szLine, LineBitCount);
-		if (m_nMaxLineNum != atoi(szTemp))
-		{
-			return false;
-		}
-
-		memcpy(szTemp, szLine + (LineBitCount + 1), LineBitCount);
-		if (m_nCurLine != atoi(szTemp))
-		{
-			return false;
-		}
-
-		memcpy(szTemp, szLine + (LineBitCount + 1) * 2, LineBitCount);
-		if (m_nNextLine != atoi(szTemp))
-		{
-			return false;
-		}
-
-		memcpy(szTemp, szLine + (LineBitCount + 1) * 3, LineBitCount);
-		if (m_nMaxColNum != atoi(szTemp))
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-void CLogHead::GenerateString(char* szLine, int nSize)
-{
-	if (nSize != m_nMaxColNum)
-	{
-		return;
-	}
-
-	sprintf_s(szLine, nSize, "%06d %06d %06d %06d", m_nMaxLineNum, m_nCurLine, m_nNextLine, m_nMaxColNum);
-	memset(szLine + HeadLen, ' ', nSize - HeadLen);
-	memcpy(szLine + (nSize - g_nMsgTailLen), g_szMsgTail, g_nMsgTailLen);
 }

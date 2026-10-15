@@ -457,6 +457,10 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibKAnswerSignal,
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibKAnswer, Qt::QueuedConnection);
 
+	// 心跳固件版本时间：协议线程 emit，队列连接切到 UI 线程写 label_60
+	connect(this, &Insulator_Zero_Value_Detection_Robot::HeartBeatVersionSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_HeartBeatVersion, Qt::QueuedConnection);
+
 	// OTA升级：升级按钮点击 + 状态回调（协议线程emit，队列连接切到UI线程）
 	connect(ui.pushButton_7, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click);
 	connect(this, &Insulator_Zero_Value_Detection_Robot::OtaStatusSignal,
@@ -479,11 +483,11 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	{
 		// 每1秒轮询一次检测模块状态/电量/结果，保证设备状态实时刷新(之前被注释导致状态恒为待机)
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 2, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 3, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 4, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 	}
 
 	ui.label_34->setText(QString::number(m_nHeartBeatCount));
@@ -737,17 +741,17 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue(CSensorData* p)
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 {
-	float value = p[0];
+	float m_fvalue = p[0];
 
 	// 定标流程中的0x0F结果只走定标信号槽，不得写入工单测量数据与曲线（回调在协议线程）
 	if (m_bCalibMeasuring)
 	{
-		emit CalibMeasureValueSignal(static_cast<double>(value));
+		emit CalibMeasureValueSignal(static_cast<double>(m_fvalue));
 		return;
 	}
 
 	if (m_pDeviceLog)
-		m_pDeviceLog->WriteFormat("收到测量结果:%.3f MΩ", value);
+		m_pDeviceLog->WriteFormat("收到测量结果:%.3f MΩ", m_fvalue);
 
 	// 测量流程:记录本次结果所属步骤,切到UI线程推进后续流程（回调在协议线程）
 	int nMeasureStep = m_nMeasureStep;
@@ -755,6 +759,7 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 		OnMeasureResult(nMeasureStep);
 		}, Qt::QueuedConnection);
 
+	int value = static_cast<int>(m_fvalue);
 	overlayLabel->setWindowFlags(Qt::Widget);
 	overlayLabel->setStyleSheet("background-color:rgba(0,0,0,20);color:white;font-size:20px;");
 	overlayLabel->setText(QString("当前检测结果:%1MΩ").arg(value));
@@ -1799,6 +1804,31 @@ void Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat(const CDevic
 	m_time_LastHeartBeatTime.GetCurTime();
 	m_nHeartBeatCount++;
 	m_mutexDeviceInfoLock.unlock();
+
+	// 从心跳解析下位机固件版本时间（年-月-日 + 当天编译次数）：回调运行在协议线程，不得直接操作界面，
+	// 发信号由队列连接切到 UI 线程更新 label_60。
+	// 协议约定：年份存为实际年 - 2000 的原始十进制值（例 2025 → 25，即十六进制 0x19），月/日/编译次数同下；
+	// 年/月为 0 视为尚未收到有效版本（上电初值），不发信号避免将默认 UI 文本提前覆盖。
+	// 心跳频繁到达，仅当版本字符串变化时才 emit，避免每帧重复刷新 UI。
+	if (b.m_cHardwareYear > 0 && b.m_cHardwareMonth > 0)
+	{
+		const QString strVer = QStringLiteral("%1-%2-%3 (#%4)")
+			.arg(2000 + static_cast<int>(b.m_cHardwareYear))
+			.arg(static_cast<int>(b.m_cHardwareMonth), 2, 10, QLatin1Char('0'))
+			.arg(static_cast<int>(b.m_cHardwareDay), 2, 10, QLatin1Char('0'))
+			.arg(static_cast<int>(b.m_cHardwareVersionOfDay));
+		if (strVer != m_strLastHwVersion)
+		{
+			m_strLastHwVersion = strVer;
+			emit HeartBeatVersionSignal(strVer);
+		}
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_HeartBeatVersion(const QString& strVersion)
+{
+	// UI 线程：将心跳解析出的下位机固件版本时间写入 label_60（默认文本为软件版本，收到首帧有效心跳后覆盖）
+	ui.label_60->setText(strVersion);
 }
 
 bool Insulator_Zero_Value_Detection_Robot::IsMainPowerConfirmedOff()

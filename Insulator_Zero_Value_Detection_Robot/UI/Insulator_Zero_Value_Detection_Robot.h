@@ -42,6 +42,8 @@ signals:
 	void CalibAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, qint32 nValue1, qint32 nValue2);
 	// 0x17/0x03（写K）与 0x17/0x04（读K）应答（V1.1 新增，K 为 IEEE754 float，与毫值参数不同，单独走一个信号）
 	void CalibKAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK);
+	// 心跳包中解析出的下位机固件版本时间（协议线程 emit，队列连接切到 UI 线程更新 label_60）
+	void HeartBeatVersionSignal(const QString& strVersion);
 	// OTA升级状态回调（协议线程emit，队列连接切到UI线程）
 	void OtaStatusSignal(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex);
 
@@ -137,6 +139,9 @@ private slots:
 	void On_WriteCalibK_Click();
 	// K 应答处理（UI线程）：0x04 成功回填 lineEdit_8；0x03 成功用回显 K 同步 lineEdit_8 便于核对
 	void On_CalibKAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK);
+
+	// UI 线程：将心跳解析出的下位机固件版本时间写入 label_60
+	void On_HeartBeatVersion(const QString& strVersion);
 
 	// 等待回测结果的槽：收到一次0x0F测量值（已切到UI线程）
 	void On_CalibMeasureValue(double dValue);
@@ -319,6 +324,10 @@ private:
 	CCFRD_Time m_time_LastHeartBeatTime;
 
 	uint64_t m_nHeartBeatCount = 0;
+
+	// 上一次已 emit 的下位机固件版本字符串（仅协议线程读写）：
+	// 心跳频繁到达，仅当版本变化时才发信号，避免每帧都刷新 UI
+	QString m_strLastHwVersion;
 	
 	bool m_bControlBroadConnected = false;
 

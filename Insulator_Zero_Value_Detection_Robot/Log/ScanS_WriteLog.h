@@ -6,13 +6,15 @@ class CWriteLog
 {
 public:
 	//创建一个对象后，可以在多个线程中通过此对象写日志
-	//多个对象不能写同一个日志文件
+	//日志文件按“日期 + 固定大小（1 MB）”滚动分片：
+	//  实际生成的文件名形如 <basename>_YYYYMMDD_NNN<ext>，例如：
+	//      Log\DeviceLog_20261015_001.txt
+	//      Log\DeviceLog_20261015_002.txt   // 前一分片写满 1 MB 后自动新建
+	//      Log\DeviceLog_20261016_001.txt   // 跨天时自动新建
 
-	//strPath：路径+文件名
-	//dwMaxRowCount：日志文件的最大行数(最大值不能超过999999)，循环覆盖
-	//dwMaxColCount：日志文件每行的字节数
-	//dwMaxColCount须大于38字节,其中34字节为固定的日期长度,4个字节为连续2个回车换行符)
-	//dwMaxColCount须小于等于1024字节
+	//strPath：路径+文件名（作为分片文件的命名模板，如 "Log\\DeviceLog.txt"）
+	//dwMaxRowCount：保留参数（历史 API 兼容），当前实现不再按行数循环覆盖
+	//dwMaxColCount：单条消息内容的最大字节数（超出会被截断），建议 64 ~ 8192
 	//nSync  1:同步   0:异步
 	CWriteLog(
 		const std::string& strPath, int dwMaxRowCount, int dwMaxColCount,
