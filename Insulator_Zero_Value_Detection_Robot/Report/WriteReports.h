@@ -70,8 +70,9 @@ public:
 
 	// 生成测量数据表 HTML。mapTicketMearData 结构: { 侧别: { 相别: [值...] } }
 	// bDouble: 双联时每相数组按[内侧,外侧]成对存放，拆成内/外两列；单联每相一列
+	// dThreshold: 绝缘阈值(MΩ)，低于此值的测量值以红色(#f56c6c)显示
 	// 行数 = 各相数组最大片数（双联 ceil(size/2)），无数据时输出"暂无测量数据"占位行
-	static QString BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble);
+	static QString BuildMearTableHtml(const QJsonObject& mapTicketMearData, bool bDouble, double dThreshold);
 
 	// 将 HTML 富文本导出为 PDF（QTextDocument + QPdfWriter，A4，输出目录自动创建）
 	static bool ExportHtmlToPdf(const QString& strHtml, const QString& strPdfPath);

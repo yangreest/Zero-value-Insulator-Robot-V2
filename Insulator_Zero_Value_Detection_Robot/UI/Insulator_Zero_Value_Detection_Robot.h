@@ -40,6 +40,12 @@ signals:
 	void CalibMeasureValueSignal(double dValue);
 	// 0x17校准命令应答（子命令/结果/原因/参数1/参数2，参数为毫值）
 	void CalibAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, qint32 nValue1, qint32 nValue2);
+	// 0x17/0x03（写K）与 0x17/0x04（读K）应答（V1.1 新增，K 为 IEEE754 float，与毫值参数不同，单独走一个信号）
+	void CalibKAnswerSignal(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK);
+	// 心跳包中解析出的下位机固件版本时间（协议线程 emit，队列连接切到 UI 线程更新 label_60）
+	void HeartBeatVersionSignal(const QString& strVersion);
+	// OTA升级状态回调（协议线程emit，队列连接切到UI线程）
+	void OtaStatusSignal(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex);
 
 private slots:
 	void On_timer_timeout();
@@ -126,12 +132,28 @@ private slots:
 	// 辅助：读回Flash中已存系数（0x17/0x0C）
 	void On_CalibReadCoef_Click();
 
+	// ===== 系统设置页·校准模块（V1.1 §4.7/§4.8）=====
+	// pushButton_5：读校准系数 K（0x17/0x04），应答回填 lineEdit_8
+	void On_ReadCalibK_Click();
+	// pushButton_16：写校准系数 K（0x17/0x03），K 从 lineEdit_12 取
+	void On_WriteCalibK_Click();
+	// K 应答处理（UI线程）：0x04 成功回填 lineEdit_8；0x03 成功用回显 K 同步 lineEdit_8 便于核对
+	void On_CalibKAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK);
+
+	// UI 线程：将心跳解析出的下位机固件版本时间写入 label_60
+	void On_HeartBeatVersion(const QString& strVersion);
+
 	// 等待回测结果的槽：收到一次0x0F测量值（已切到UI线程）
 	void On_CalibMeasureValue(double dValue);
 	// 等待回测结果的槽：收到一次0x17校准应答（已切到UI线程）
 	void On_CalibAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason, qint32 nValue1, qint32 nValue2);
 	// 等待超时：0x0F约3.2秒回报、0x0E写Flash需1~2秒，超时结束本轮等待
 	void On_CalibTimeout();
+
+	// OTA升级按钮点击：选择bin文件并启动升级流程
+	void On_Upgrade_Click();
+	// OTA状态回调（UI线程）：完成/失败时关闭等待弹窗并提示
+	void On_OtaStatus(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex);
 
 public slots:
 	void On_NewTicketSignal(CNewTicketConfig strTicket);
@@ -193,6 +215,13 @@ private:
 	QString BuildReportHtml();
 	// 生成当前工单报告并导出 PDF 到默认目录，成功返回 true
 	bool GenerateCurrentTicketReport();
+
+	// 将弹窗定位并缩放到"实时视频header行"区域（pBInspection下缘/label_47右缘/pushButton_2左缘/label_9上缘）
+	QPoint PositionDialogInVideoHeaderRegion();
+
+	// OTA等待弹窗（懒创建，不可关闭，升级结束前拦截Esc/关闭事件）
+	void ShowOtaWaitDialog(const QString& strText);
+	void HideOtaWaitDialog();
 
 	//自定义显示label
 	void SetVisibles(bool bVisible,int nSliceNum);
@@ -298,6 +327,10 @@ private:
 	CCFRD_Time m_time_LastHeartBeatTime;
 
 	uint64_t m_nHeartBeatCount = 0;
+
+	// 上一次已 emit 的下位机固件版本字符串（仅协议线程读写）：
+	// 心跳频繁到达，仅当版本变化时才发信号，避免每帧都刷新 UI
+	QString m_strLastHwVersion;
 	
 	bool m_bControlBroadConnected = false;
 
@@ -365,6 +398,12 @@ private:
 	// 顶部告警弹窗及其自动消失定时器（懒创建，复用;新告警覆盖旧内容并重新计时）
 	QLabel* m_pAlarmPopupLabel = nullptr;
 	QTimer* m_pAlarmHideTimer = nullptr;
+
+	// OTA升级等待弹窗（懒创建，复用;升级期间不可关闭）
+	QDialog* m_pOtaWaitDialog = nullptr;
+	QLabel* m_pOtaWaitLabel = nullptr;
+	// OTA进行中标志：防止重复点击升级按钮
+	std::atomic<bool> m_bOtaInProgress{ false };
 
 	// ===== 测量流程状态机成员 =====
 	// 探针到位轮询定时器（周期触发，判断到位信号或兜底超时）

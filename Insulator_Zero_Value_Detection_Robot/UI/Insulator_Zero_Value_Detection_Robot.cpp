@@ -328,6 +328,10 @@ void Insulator_Zero_Value_Detection_Robot::InitParam()
 	pWHSDControlBoardProtocol->RegisterZeroDataCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterCalibCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer, this, std::placeholders::_1));
 	pWHSDControlBoardProtocol->RegisterServoArrivalCallBack(std::bind(&Insulator_Zero_Value_Detection_Robot::CallBack_ServoArrival, this, std::placeholders::_1));
+	// OTA状态回调：协议线程内emit信号，队列连接切到UI线程处理
+	pWHSDControlBoardProtocol->RegisterOTAStatus([this](uint8_t status, uint32_t all, uint32_t idx) {
+		emit OtaStatusSignal(status, all, idx);
+		});
 	//	std::placeholders::_1,
 	//	std::placeholders::_2, std::placeholders::_3));
 	//pWHSDControlBoardProtocol->RegisterXRaySendResult(xRayResult);
@@ -441,11 +445,26 @@ void Insulator_Zero_Value_Detection_Robot::BindAction()
 	connect(ui.pushButton_CalibCheck, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibCheck_Click);
 	connect(ui.pushButton_CalibReadCoef, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_CalibReadCoef_Click);
 
+	// 系统设置页·校准模块（V1.1 §4.7/§4.8）：pushButton_5 读 K→lineEdit_8，pushButton_16 从 lineEdit_12 写 K
+	connect(ui.pushButton_5, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_ReadCalibK_Click);
+	connect(ui.pushButton_16, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_WriteCalibK_Click);
+
 	// 等待回测结果：下位机应答/回报在协议线程回调，用队列连接切到UI线程再推进流程
 	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibMeasureValueSignal,
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibMeasureValue, Qt::QueuedConnection);
 	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibAnswerSignal,
 		this, &Insulator_Zero_Value_Detection_Robot::On_CalibAnswer, Qt::QueuedConnection);
+	connect(this, &Insulator_Zero_Value_Detection_Robot::CalibKAnswerSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_CalibKAnswer, Qt::QueuedConnection);
+
+	// 心跳固件版本时间：协议线程 emit，队列连接切到 UI 线程写 label_60
+	connect(this, &Insulator_Zero_Value_Detection_Robot::HeartBeatVersionSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_HeartBeatVersion, Qt::QueuedConnection);
+
+	// OTA升级：升级按钮点击 + 状态回调（协议线程emit，队列连接切到UI线程）
+	connect(ui.pushButton_7, &QPushButton::clicked, this, &Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click);
+	connect(this, &Insulator_Zero_Value_Detection_Robot::OtaStatusSignal,
+		this, &Insulator_Zero_Value_Detection_Robot::On_OtaStatus, Qt::QueuedConnection);
 
 
 	ui.pBInspection->setChecked(true);
@@ -464,11 +483,11 @@ void Insulator_Zero_Value_Detection_Robot::On_timer_timeout()
 	{
 		// 每1秒轮询一次检测模块状态/电量/结果，保证设备状态实时刷新(之前被注释导致状态恒为待机)
 		auto cmds = CWHSDControlBoardProtocol::SensorCmd(0, 2, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 3, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 		cmds = CWHSDControlBoardProtocol::SensorCmd(0, 4, 0);
-		//m_pComDevice->Write(cmds.data(), cmds.size());
+		m_pComDevice->Write(cmds.data(), cmds.size());
 	}
 
 	ui.label_34->setText(QString::number(m_nHeartBeatCount));
@@ -722,17 +741,17 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_SensorValue(CSensorData* p)
 
 void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 {
-	float value = p[0];
+	float m_fvalue = p[0];
 
 	// 定标流程中的0x0F结果只走定标信号槽，不得写入工单测量数据与曲线（回调在协议线程）
 	if (m_bCalibMeasuring)
 	{
-		emit CalibMeasureValueSignal(static_cast<double>(value));
+		emit CalibMeasureValueSignal(static_cast<double>(m_fvalue));
 		return;
 	}
 
 	if (m_pDeviceLog)
-		m_pDeviceLog->WriteFormat("收到测量结果:%.3f MΩ", value);
+		m_pDeviceLog->WriteFormat("收到测量结果:%.3f MΩ", m_fvalue);
 
 	// 测量流程:记录本次结果所属步骤,切到UI线程推进后续流程（回调在协议线程）
 	int nMeasureStep = m_nMeasureStep;
@@ -740,6 +759,7 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 		OnMeasureResult(nMeasureStep);
 		}, Qt::QueuedConnection);
 
+	int value = static_cast<int>(m_fvalue);
 	overlayLabel->setWindowFlags(Qt::Widget);
 	overlayLabel->setStyleSheet("background-color:rgba(0,0,0,20);color:white;font-size:20px;");
 	overlayLabel->setText(QString("当前检测结果:%1MΩ").arg(value));
@@ -878,6 +898,12 @@ void Insulator_Zero_Value_Detection_Robot::CallBack_ZeroValue(float* p)
 void Insulator_Zero_Value_Detection_Robot::CallBack_CalibAnswer(const CCalibAnswer& answer)
 {
 	// 回调运行在协议线程，不得直接操作界面，发信号由队列连接切到UI线程
+	if (answer.IsKAnswer())
+	{
+		// V1.1 §4.7/§4.8：0x03 写 K、0x04 读 K，K 为 IEEE754 float，与毫值参数不同，走独立信号
+		emit CalibKAnswerSignal(answer.m_cSubCmd, answer.m_cResult, answer.m_cReason, answer.m_fK);
+		return;
+	}
 	emit CalibAnswerSignal(answer.m_cSubCmd, answer.m_cResult, answer.m_cReason,
 		answer.m_nValue1, answer.m_nValue2);
 }
@@ -1278,6 +1304,121 @@ void Insulator_Zero_Value_Detection_Robot::On_CalibReadCoef_Click()
 	CalibSendFrame(CWHSDControlBoardProtocol::CalibReadCoef());
 }
 
+// ===== 系统设置页·校准模块 K 读写（V1.1 §4.7/§4.8）=====
+// 与groupBox_3的单点定标流程互斥：K 读写不走 CalibStartWait 状态机，采用发后自恢复按钮的轻量模式，
+// 避免与定标流程争抢 m_eCalibStep；若当前处于定标流程中则直接拒绝并提示。
+
+void Insulator_Zero_Value_Detection_Robot::On_ReadCalibK_Click()
+{
+	// V1.1 §4.8：读校准系数 K（0x17/0x04），无参数；
+	// 完整帧 FF FE 09 01 17 04 22 FD FC；应答中的 K 经 CalibKAnswerSignal 回到 UI 线程后回填 lineEdit_8。
+	// K 不落 Flash，上电后首次读到的必为默认 10；若与已下发值不符说明中途发生过复位/掉电。
+	if (m_pComDevice == nullptr || !m_bControlBroadConnected)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("控制板未连接，无法读取校准系数 K"));
+		return;
+	}
+	if (m_eCalibStep != eCalibIdle)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("单点定标流程进行中，请等待完成后再操作"));
+		return;
+	}
+
+	ui.pushButton_5->setEnabled(false);
+	ui.lineEdit_8->setText(QStringLiteral("读取中..."));
+	auto frame = CWHSDControlBoardProtocol::CalibReadK();
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write("下发读K(0x17/0x04)");
+	m_pComDevice->Write(frame.data(), frame.size());
+	// 兜底恢复按钮与提示文本，避免下位机无应答时按钮永久禁用
+	QTimer::singleShot(5000, this, [this]() {
+		ui.pushButton_5->setEnabled(true);
+		if (ui.lineEdit_8->text() == QStringLiteral("读取中..."))
+			ui.lineEdit_8->setText(QStringLiteral("读取超时"));
+		});
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_WriteCalibK_Click()
+{
+	// V1.1 §4.7：写校准系数 K（0x17/0x03），K 为 4 字节 IEEE754 float 大端，不是毫值整数；
+	// 完整帧示例（K=10）FF FE 0D 01 17 03 41 20 00 00 86 FD FC；固件不二次加工，写什么就是什么，
+	// 立即生效；不写 Flash，掉电/复位后恢复为默认 10。
+	if (m_pComDevice == nullptr || !m_bControlBroadConnected)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("控制板未连接，无法写入校准系数 K"));
+		return;
+	}
+	if (m_eCalibStep != eCalibIdle)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("单点定标流程进行中，请等待完成后再操作"));
+		return;
+	}
+
+	bool bOk = false;
+	const float fK = ui.lineEdit_12->text().trimmed().toFloat(&bOk);
+	// 上位机先拦一道非法值：NaN/±Inf 下位机会以"结果00、原因05"拒绝，K=−500 为退化值（增益0）会把任意输入压成500
+	if (!bOk || std::isnan(fK) || std::isinf(fK))
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"),
+			QStringLiteral("校准系数 K 非法：请输入一个有效浮点数（NaN / ±Inf 会被下位机拒绝）"));
+		return;
+	}
+	if (qFuzzyCompare(fK, -500.0f))
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"),
+			QStringLiteral("K = -500 为退化值（增益 1 + K/500 = 0），会把任意输入压成 500，禁止下发"));
+		return;
+	}
+
+	ui.pushButton_16->setEnabled(false);
+	auto frame = CWHSDControlBoardProtocol::CalibWriteK(fK);
+	if (m_pDeviceLog)
+		m_pDeviceLog->Write(QStringLiteral("下发写K(0x17/0x03) K=%1").arg(static_cast<double>(fK), 0, 'f', 4).toStdString());
+	m_pComDevice->Write(frame.data(), frame.size());
+	// 0x03 不写 Flash，应答立即返回（无 0x0E 那样的 1~2 秒延迟），5 秒兜底已足
+	QTimer::singleShot(5000, this, [this]() { ui.pushButton_16->setEnabled(true); });
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_CalibKAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason, float fK)
+{
+	// UI 线程：处理 0x03/0x04 应答，不介入定标流程状态机（m_eCalibStep），只同步 lineEdit_8 与设备日志
+	ui.pushButton_5->setEnabled(true);
+	ui.pushButton_16->setEnabled(true);
+
+	const bool bSuccess = (cResult == 0x01);
+	const bool bIsWrite = (cSubCmd == 0x03);
+	const QString strSub = bIsWrite ? QStringLiteral("写K(0x17/0x03)") : QStringLiteral("读K(0x17/0x04)");
+	if (bSuccess)
+	{
+		// 写 K 成功时用回显值同步 lineEdit_8，确保界面展示的是下位机实际生效的 K，而非本地输入
+		const double dK = static_cast<double>(fK);
+		ui.lineEdit_8->setText(QString::number(dK, 'f', 4));
+		const QString strMsg = QStringLiteral("%1成功，当前 K=%2").arg(strSub).arg(dK, 0, 'f', 4);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write(strMsg.toStdString());
+	}
+	else
+	{
+		// 失败帧不带 K（例 FF FE 0B 01 17 03 00 05 28 FD FC），保留 lineEdit_8 原值，只提示失败原因
+		QString strReason;
+		switch (cReason)
+		{
+		case 0x05:
+			strReason = QStringLiteral("参数长度/格式错误（数据域不足5字节，或 K 为 NaN / ±Inf）");
+			break;
+		default:
+			strReason = QStringLiteral("未知原因码 0x%1").arg(cReason, 2, 16, QLatin1Char('0')).toUpper();
+			break;
+		}
+		if (ui.lineEdit_8->text() == QStringLiteral("读取中..."))
+			ui.lineEdit_8->setText(QStringLiteral("读取失败"));
+		const QString strMsg = QStringLiteral("%1失败：%2").arg(strSub).arg(strReason);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write(strMsg.toStdString());
+		QMessageBox::warning(this, QStringLiteral("提示"), strMsg);
+	}
+}
+
 void Insulator_Zero_Value_Detection_Robot::On_CalibAnswer(quint8 cSubCmd, quint8 cResult, quint8 cReason,
 	qint32 nValue1, qint32 nValue2)
 {
@@ -1663,6 +1804,31 @@ void Insulator_Zero_Value_Detection_Robot::Callback_DeviceHeartBeat(const CDevic
 	m_time_LastHeartBeatTime.GetCurTime();
 	m_nHeartBeatCount++;
 	m_mutexDeviceInfoLock.unlock();
+
+	// 从心跳解析下位机固件版本时间（年-月-日 + 当天编译次数）：回调运行在协议线程，不得直接操作界面，
+	// 发信号由队列连接切到 UI 线程更新 label_60。
+	// 协议约定：年份存为实际年 - 2000 的原始十进制值（例 2025 → 25，即十六进制 0x19），月/日/编译次数同下；
+	// 年/月为 0 视为尚未收到有效版本（上电初值），不发信号避免将默认 UI 文本提前覆盖。
+	// 心跳频繁到达，仅当版本字符串变化时才 emit，避免每帧重复刷新 UI。
+	if (b.m_cHardwareYear > 0 && b.m_cHardwareMonth > 0)
+	{
+		const QString strVer = QStringLiteral("%1-%2-%3 (#%4)")
+			.arg(2000 + static_cast<int>(b.m_cHardwareYear))
+			.arg(static_cast<int>(b.m_cHardwareMonth), 2, 10, QLatin1Char('0'))
+			.arg(static_cast<int>(b.m_cHardwareDay), 2, 10, QLatin1Char('0'))
+			.arg(static_cast<int>(b.m_cHardwareVersionOfDay));
+		if (strVer != m_strLastHwVersion)
+		{
+			m_strLastHwVersion = strVer;
+			emit HeartBeatVersionSignal(strVer);
+		}
+	}
+}
+
+void Insulator_Zero_Value_Detection_Robot::On_HeartBeatVersion(const QString& strVersion)
+{
+	// UI 线程：将心跳解析出的下位机固件版本时间写入 label_60（默认文本为软件版本，收到首帧有效心跳后覆盖）
+	ui.label_60->setText(strVersion);
 }
 
 bool Insulator_Zero_Value_Detection_Robot::IsMainPowerConfirmedOff()
@@ -2034,10 +2200,11 @@ QString Insulator_Zero_Value_Detection_Robot::BuildReportHtml()
 	mapData["remark"] = QString::fromStdString(ticket.m_strRemark);
 
 	const bool bDouble = (ticket.m_eBunchType == CNewTicketConfig::BunchType::eDouble);
-	mapData["mearTable"] = CWriteReports::BuildMearTableHtml(m_mapTicketMearData, bDouble);
+	// 绝缘阈值：mearTable中低于此值的测量值以红色显示，结论统计也复用此阈值
+	const double dThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
+	mapData["mearTable"] = CWriteReports::BuildMearTableHtml(m_mapTicketMearData, bDouble, dThreshold);
 
 	// 检测结论：统计低于绝缘阈值的测量值个数
-	const double dThreshold = m_pConfig->m_memControlBoardConfig.m_wInsuThreshold;
 	int nLowCount = 0;
 	for (auto itSide = m_mapTicketMearData.constBegin(); itSide != m_mapTicketMearData.constEnd(); ++itSide)
 	{
@@ -2571,8 +2738,8 @@ void Insulator_Zero_Value_Detection_Robot::ShowMeasureWaitDialog(const QString& 
 	m_pMeasureWaitLabel->setText(strText);
 	m_pMeasureWaitDialog->adjustSize();
 	// 显示在主窗口最上方居中位置（模态弹窗置顶,屏蔽下层界面操作）
-	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
-		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
+	m_pMeasureWaitDialog->move(PositionDialogInVideoHeaderRegion());
+	
 	m_pMeasureWaitDialog->show();
 	m_pMeasureWaitDialog->raise();
 	// 等待弹窗弹出后,已显示的告警弹窗需下移错开位置
@@ -2585,25 +2752,75 @@ void Insulator_Zero_Value_Detection_Robot::UpdateMeasureWaitDialog(const QString
 		return;
 	m_pMeasureWaitLabel->setText(strText);
 	m_pMeasureWaitDialog->adjustSize();
-	m_pMeasureWaitDialog->move(mapToGlobal(QPoint(
-		(width() - m_pMeasureWaitDialog->width()) / 2, 20)));
-	// 等待弹窗尺寸变化后同步重排告警弹窗
-	PositionAlarmPopup();
+	m_pMeasureWaitDialog->move(PositionDialogInVideoHeaderRegion());
 }
 
 void Insulator_Zero_Value_Detection_Robot::HideMeasureWaitDialog()
 {
 	if (m_pMeasureWaitDialog != nullptr)
 		m_pMeasureWaitDialog->hide();
-	// 等待弹窗关闭后,仍在显示的告警弹窗回到顶部默认位置
-	PositionAlarmPopup();
+}
+
+// 将弹窗定位并缩放到"实时视频header行"区域
+// 区域边界：上=pBInspection下缘，下=label_9上缘，左=label_47右缘，右=pushButton_2左缘
+QPoint Insulator_Zero_Value_Detection_Robot::PositionDialogInVideoHeaderRegion()
+{
+	// 将四个控件的边界坐标转换到主窗口坐标系
+	const QPoint ptTop = ui.pBInspection->mapTo(this, QPoint(0, ui.pBInspection->height()));
+	const QPoint ptLeft = ui.label_47->mapTo(this, QPoint(ui.label_47->width(), 0));
+	const QPoint ptRight = ui.pushButton_2->mapTo(this, QPoint(0, 0));
+	const QPoint ptBottom = ui.label_9->mapTo(this, QPoint(0, 0));
+
+	const int x = ptLeft.x();
+	const int y = ptTop.y();
+	const int w = ptRight.x() - ptLeft.x();
+	const int h = ptBottom.y() - ptTop.y();
+	if (w <= 0 || h <= 0) return QPoint();	// 区域无效时返回空坐标
+
+	// 转为全局屏幕坐标（弹窗为顶层窗口，无父控件）
+	const QPoint ptGlobal = this->mapToGlobal(QPoint(x, y));
+	return ptGlobal;
+}
+
+// OTA等待弹窗：懒创建，不可关闭，升级结束前拦截Esc/关闭事件
+void Insulator_Zero_Value_Detection_Robot::ShowOtaWaitDialog(const QString& strText)
+{
+	if (m_pOtaWaitDialog == nullptr)
+	{
+		m_pOtaWaitDialog = new QDialog(this);
+		m_pOtaWaitDialog->setWindowTitle(QStringLiteral("OTA升级"));
+		// 无关闭按钮，并拦截Esc/关闭事件，升级结束前不可关闭
+		m_pOtaWaitDialog->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
+		m_pOtaWaitDialog->installEventFilter(this);
+
+		m_pOtaWaitLabel = new QLabel(m_pOtaWaitDialog);
+		m_pOtaWaitLabel->setAlignment(Qt::AlignCenter);
+		m_pOtaWaitLabel->setMinimumSize(320, 40);
+		m_pOtaWaitLabel->setStyleSheet("font-size:18px;");
+		auto pLayout = new QVBoxLayout(m_pOtaWaitDialog);
+		pLayout->addWidget(m_pOtaWaitLabel);
+	}
+	m_pOtaWaitLabel->setText(strText);
+	m_pOtaWaitDialog->adjustSize();
+	// 显示在主窗口最上方居中位置
+	m_pOtaWaitDialog->move(mapToGlobal(QPoint(
+		(width() - m_pOtaWaitDialog->width()) / 2, 20)));
+	m_pOtaWaitDialog->show();
+	m_pOtaWaitDialog->raise();
+}
+
+void Insulator_Zero_Value_Detection_Robot::HideOtaWaitDialog()
+{
+	if (m_pOtaWaitDialog != nullptr)
+		m_pOtaWaitDialog->hide();
 }
 
 bool Insulator_Zero_Value_Detection_Robot::eventFilter(QObject* obj, QEvent* event)
 {
-	if (m_pMeasureWaitDialog != nullptr && obj == m_pMeasureWaitDialog)
+	// 屏蔽Esc与关闭事件:测量等待弹窗与OTA等待弹窗均只能由流程关闭
+	if ((m_pMeasureWaitDialog != nullptr && obj == m_pMeasureWaitDialog) ||
+		(m_pOtaWaitDialog != nullptr && obj == m_pOtaWaitDialog))
 	{
-		// 屏蔽Esc与关闭事件,弹窗只能由测量流程关闭
 		if (event->type() == QEvent::Close)
 			return true;
 		if (event->type() == QEvent::KeyPress &&
@@ -3531,7 +3748,12 @@ void Insulator_Zero_Value_Detection_Robot::ShowAlarmPopup(EAlarmLevel eLevel, co
 	// 限制最大宽度避免长文本拉通整屏,自适应尺寸后按等待弹窗状态错开位置显示
 	m_pAlarmPopupLabel->setMaximumWidth(width() * 2 / 3);
 	m_pAlarmPopupLabel->adjustSize();
-	PositionAlarmPopup();
+	QPoint ptGlobal = PositionDialogInVideoHeaderRegion();
+	// m_pAlarmPopupLabel 是主窗口的子控件，需将全局坐标转换为相对于主窗口的局部坐标
+	QPoint ptLocal = this->mapFromGlobal(ptGlobal);
+	// 仅当测量等待弹窗可见时，才在其下方偏移，避免未显示时产生错误偏移
+	int nOffsetY = (m_pMeasureWaitDialog && m_pMeasureWaitDialog->isVisible()) ? m_pMeasureWaitDialog->height() : 0;
+	m_pAlarmPopupLabel->move(ptLocal.x(), ptLocal.y() + nOffsetY);
 	m_pAlarmPopupLabel->show();
 	m_pAlarmPopupLabel->raise();
 
@@ -3661,5 +3883,87 @@ void Insulator_Zero_Value_Detection_Robot::SetVisibles(bool bVisible, int nSlice
 		{
 			label->setVisible(true);
 		}
+	}
+}
+
+// ===== OTA升级流程 =====
+
+// 升级按钮点击：选择bin文件 → 读取 → 启动OTA → 显示等待弹窗
+void Insulator_Zero_Value_Detection_Robot::On_Upgrade_Click()
+{
+	// 防止重复点击
+	if (m_bOtaInProgress)
+		return;
+
+	// 检查控制板连接状态
+	if (!m_bControlBroadConnected)
+	{
+		QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("控制板未连接，无法升级"));
+		return;
+	}
+
+	// 选择bin升级文件
+	const QString strFilePath = QFileDialog::getOpenFileName(this,
+		QStringLiteral("选择升级文件"), QString(), QStringLiteral("Bin文件 (*.bin)"));
+	if (strFilePath.isEmpty())
+		return;
+
+	// 读取文件到字节数组
+	std::vector<uint8_t> vecFile;
+	if (!WHSD_Tools::ReadFileToVector(strFilePath.toLocal8Bit().toStdString(), &vecFile) || vecFile.empty())
+	{
+		QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("升级文件读取失败或文件为空"));
+		return;
+	}
+
+	if (m_pDeviceLog)
+		m_pDeviceLog->WriteFormat("OTA升级开始:文件=%s, 大小=%zu字节", strFilePath.toStdString().c_str(), vecFile.size());
+
+	// 置进行中标志，禁用升级按钮
+	m_bOtaInProgress = true;
+	ui.pushButton_7->setEnabled(false);
+
+	// 显示不可关闭的等待弹窗
+	ShowOtaWaitDialog(QStringLiteral("正在升级，请勿断电..."));
+
+	// 启动OTA（协议层内部开线程分包传输）
+	m_pWHSDControlBoardProtocol->BeginOTA(vecFile);
+}
+
+// OTA状态回调（UI线程，由OtaStatusSignal队列连接触发）
+void Insulator_Zero_Value_Detection_Robot::On_OtaStatus(quint8 cStatus, quint32 nAllPacks, quint32 nPackIndex)
+{
+	switch (cStatus)
+	{
+	case 3:	// 升级完成
+	{
+		HideOtaWaitDialog();
+		m_bOtaInProgress = false;
+		ui.pushButton_7->setEnabled(true);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("OTA升级完成");
+		QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("OTA升级完成"));
+		break;
+	}
+	case 255:	// 升级失败
+	{
+		HideOtaWaitDialog();
+		m_bOtaInProgress = false;
+		ui.pushButton_7->setEnabled(true);
+		if (m_pDeviceLog)
+			m_pDeviceLog->Write("OTA升级失败");
+		QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("OTA升级失败，请检查连接后重试"));
+		break;
+	}
+	case 2:	// 传输中：更新等待弹窗文本显示进度
+	{
+		if (m_pOtaWaitLabel != nullptr && m_pOtaWaitDialog != nullptr && m_pOtaWaitDialog->isVisible())
+		{
+			m_pOtaWaitLabel->setText(QStringLiteral("正在传输 %1/%2 ...").arg(nPackIndex).arg(nAllPacks));
+		}
+		break;
+	}
+	default:	// 状态1(进入OTA)等：不做处理
+		break;
 	}
 }
