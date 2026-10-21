@@ -36,6 +36,19 @@ public:
 	std::string m_strSubRtsp;// 子码流
 };
 
+// 告警弹窗位置配置(临时调优使用,可通过 Ctrl+Shift+P 打开的对话框实时修改)
+// 所有值均以像素为单位,坐标系原点为主窗口左上角
+class CAlarmPopupConfig
+{
+public:
+	// 水平偏移:相对"主窗口宽度居中"位置的附加偏移,正值向右,负值向左
+	int m_nOffsetX = 0;
+	// 顶部偏移:无测量等待弹窗时,告警弹窗顶部相对主窗口顶部的距离
+	int m_nOffsetY = 16;
+	// 与等待弹窗的间距:测量等待弹窗可见时,告警弹窗顶部相对等待弹窗底部的额外间距
+	int m_nGapBelowWait = 8;
+};
+
 class CNewReportConfig
 {
 public:
@@ -187,6 +200,7 @@ class CConfigManager
 public:
 	CControlBoardConfig m_memControlBoardConfig;
 	CCameraConfig m_memCCameraConfig;
+	CAlarmPopupConfig m_memAlarmPopupConfig;
 	std::vector<CNewTicketConfig> m_vecNewTicketConfig;
 	std::vector<CNewReportConfig> m_vecNewReportConfig;
 	bool Read(const std::string& filePath);

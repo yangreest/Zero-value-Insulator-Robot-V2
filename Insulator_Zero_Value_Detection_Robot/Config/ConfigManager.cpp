@@ -130,6 +130,24 @@ bool CConfigManager::Read(const std::string& filePath)
 		}
 	}
 	{
+		// 告警弹窗位置配置(可选节点,缺失时使用类内默认值)
+		auto alarmPopup = config->FirstChildElement("AlarmPopup");
+		if (alarmPopup != nullptr)
+		{
+			auto offsetXElem = alarmPopup->FirstChildElement("OffsetX");
+			if (offsetXElem != nullptr && offsetXElem->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+				m_memAlarmPopupConfig.m_nOffsetX = nIntTemp;
+
+			auto offsetYElem = alarmPopup->FirstChildElement("OffsetY");
+			if (offsetYElem != nullptr && offsetYElem->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+				m_memAlarmPopupConfig.m_nOffsetY = nIntTemp;
+
+			auto gapElem = alarmPopup->FirstChildElement("GapBelowWait");
+			if (gapElem != nullptr && gapElem->QueryIntText(&nIntTemp) == tinyxml2::XML_SUCCESS)
+				m_memAlarmPopupConfig.m_nGapBelowWait = nIntTemp;
+		}
+	}
+	{
 		// 读取m_vecNewTicketConfig 相关配置数据
         auto NewTicketList = config->FirstChildElement("NewTicketList");
 		if (NewTicketList == nullptr)
@@ -344,6 +362,24 @@ bool CConfigManager::Write(const std::string& filePath)
 		tinyxml2::XMLElement* SubRtspElem = doc.NewElement("SubRtsp");
 		SubRtspElem->SetText(m_memCCameraConfig.m_strSubRtsp.c_str());
 		camera->InsertEndChild(SubRtspElem);
+	}
+
+	// --- 写入 AlarmPopup (告警弹窗位置临时调优参数) ---
+	{
+		tinyxml2::XMLElement* alarmPopup = doc.NewElement("AlarmPopup");
+		root->InsertEndChild(alarmPopup);
+
+		tinyxml2::XMLElement* offsetXElem = doc.NewElement("OffsetX");
+		offsetXElem->SetText(m_memAlarmPopupConfig.m_nOffsetX);
+		alarmPopup->InsertEndChild(offsetXElem);
+
+		tinyxml2::XMLElement* offsetYElem = doc.NewElement("OffsetY");
+		offsetYElem->SetText(m_memAlarmPopupConfig.m_nOffsetY);
+		alarmPopup->InsertEndChild(offsetYElem);
+
+		tinyxml2::XMLElement* gapElem = doc.NewElement("GapBelowWait");
+		gapElem->SetText(m_memAlarmPopupConfig.m_nGapBelowWait);
+		alarmPopup->InsertEndChild(gapElem);
 	}
 
 	// --- 写入 NewTicketConfig ---

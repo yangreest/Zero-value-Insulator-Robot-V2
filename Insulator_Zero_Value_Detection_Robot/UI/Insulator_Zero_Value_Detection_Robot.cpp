@@ -17,6 +17,10 @@
 #include <QDateTime>
 #include <QFileDialog.h>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFormLayout>
+#include <QSpinBox>
+#include <QPushButton>
 #include <QDialog>
 #include <QKeyEvent>
 #include <QDir>
@@ -2832,6 +2836,15 @@ bool Insulator_Zero_Value_Detection_Robot::eventFilter(QObject* obj, QEvent* eve
 
 void Insulator_Zero_Value_Detection_Robot::keyPressEvent(QKeyEvent* event)
 {
+	// 快捷键 Ctrl+Shift+P:打开临时的告警弹窗位置调整对话框（现场调优使用）
+	if (event->modifiers().testFlag(Qt::ControlModifier) &&
+		event->modifiers().testFlag(Qt::ShiftModifier) &&
+		event->key() == Qt::Key_P)
+	{
+		ShowAlarmPopupPositionConfigDialog();
+		return;
+	}
+
 	// 键盘控制（与手柄操作对应,忽略长按自动重复）:
 	// Q-探针向内  E-探针向外  R-探针复原  A/←-行走左  D/→-行走右  S-停止  空格-开始测量
 	if (!event->isAutoRepeat())
@@ -3745,17 +3758,13 @@ void Insulator_Zero_Value_Detection_Robot::ShowAlarmPopup(EAlarmLevel eLevel, co
 		" border-radius: 8px; padding: 10px 24px; }").arg(pszBgColor));
 
 	m_pAlarmPopupLabel->setText(strText);
-	// 限制最大宽度避免长文本拉通整屏,自适应尺寸后按等待弹窗状态错开位置显示
+	// 限制最大宽度避免长文本拉通整屏,自适应尺寸后统一交给 PositionAlarmPopup() 定位
+	// (避免 ShowAlarmPopup 与 PositionAlarmPopup 两套位置逻辑相互覆盖导致重合)
 	m_pAlarmPopupLabel->setMaximumWidth(width() * 2 / 3);
 	m_pAlarmPopupLabel->adjustSize();
-	QPoint ptGlobal = PositionDialogInVideoHeaderRegion();
-	// m_pAlarmPopupLabel 是主窗口的子控件，需将全局坐标转换为相对于主窗口的局部坐标
-	QPoint ptLocal = this->mapFromGlobal(ptGlobal);
-	// 仅当测量等待弹窗可见时，才在其下方偏移，避免未显示时产生错误偏移
-	int nOffsetY = (m_pMeasureWaitDialog && m_pMeasureWaitDialog->isVisible()) ? m_pMeasureWaitDialog->height() : 0;
-	m_pAlarmPopupLabel->move(ptLocal.x(), ptLocal.y() + nOffsetY);
 	m_pAlarmPopupLabel->show();
 	m_pAlarmPopupLabel->raise();
+	PositionAlarmPopup();
 
 	// 4秒后自动消失;弹窗期间又来新告警则覆盖内容并重新计时
 	m_pAlarmHideTimer->start();
@@ -3765,15 +3774,190 @@ void Insulator_Zero_Value_Detection_Robot::PositionAlarmPopup()
 {
 	if (m_pAlarmPopupLabel == nullptr)
 		return;
-	// 默认靠顶部水平居中(父对象为centralWidget,主窗口无边框,两者坐标原点一致)
-	int nTop = 16;
+	// 从配置读取偏移参数(可通过 Ctrl+Shift+P 打开的对话框实时调整并持久化到 Config.xml)
+	const CAlarmPopupConfig cfg = (m_pConfig != nullptr)
+		? m_pConfig->m_memAlarmPopupConfig
+		: CAlarmPopupConfig{};
+	// 默认靠顶部水平居中(父对象为主窗口,两者坐标原点一致),再叠加用户调优偏移
+	int nTop = cfg.m_nOffsetY;
 	// 测量等待弹窗可见时,告警弹窗下移到其下方,避免两者重叠
 	if (m_pMeasureWaitDialog != nullptr && m_pMeasureWaitDialog->isVisible())
 	{
 		QPoint ptDialogInWindow = mapFromGlobal(m_pMeasureWaitDialog->pos());
-		nTop = ptDialogInWindow.y() + m_pMeasureWaitDialog->height() + 8;
+		nTop = ptDialogInWindow.y() + m_pMeasureWaitDialog->height() + cfg.m_nGapBelowWait;
 	}
-	m_pAlarmPopupLabel->move((width() - m_pAlarmPopupLabel->width()) / 2, nTop);
+	const int nLeft = (width() - m_pAlarmPopupLabel->width()) / 2 + cfg.m_nOffsetX;
+	m_pAlarmPopupLabel->move(nLeft, nTop);
+}
+
+// 临时对话框:实时调整告警弹窗弹出坐标(主要面向现场排查重合问题,可持久化到 Config.xml)
+void Insulator_Zero_Value_Detection_Robot::ShowAlarmPopupPositionConfigDialog()
+{
+	if (m_pConfig == nullptr)
+		return;
+
+	if (m_pAlarmPosConfigDialog == nullptr)
+	{
+		m_pAlarmPosConfigDialog = new QDialog(this);
+		m_pAlarmPosConfigDialog->setWindowTitle(QStringLiteral("告警弹窗位置调整（临时）"));
+		// 非模态,方便在调整时同时观察主界面弹窗效果
+		m_pAlarmPosConfigDialog->setModal(false);
+		m_pAlarmPosConfigDialog->setMinimumWidth(360);
+
+		// 顶部提示
+		auto pTip = new QLabel(QStringLiteral(
+			"修改后立即生效，可点击“预览”触发一个测试告警；确认位置合适后点击“保存到 Config”。"),
+			m_pAlarmPosConfigDialog);
+		pTip->setWordWrap(true);
+
+		// 三个偏移参数输入框
+		m_pAlarmOffsetXSpin = new QSpinBox(m_pAlarmPosConfigDialog);
+		m_pAlarmOffsetXSpin->setRange(-2000, 2000);
+		m_pAlarmOffsetXSpin->setSuffix(QStringLiteral(" px"));
+		m_pAlarmOffsetXSpin->setToolTip(QStringLiteral("相对“主窗口水平居中”位置的附加偏移，正值向右"));
+
+		m_pAlarmOffsetYSpin = new QSpinBox(m_pAlarmPosConfigDialog);
+		m_pAlarmOffsetYSpin->setRange(-500, 2000);
+		m_pAlarmOffsetYSpin->setSuffix(QStringLiteral(" px"));
+		m_pAlarmOffsetYSpin->setToolTip(QStringLiteral("无测量等待弹窗时，告警弹窗顶部相对主窗口顶部的距离"));
+
+		m_pAlarmGapSpin = new QSpinBox(m_pAlarmPosConfigDialog);
+		m_pAlarmGapSpin->setRange(0, 500);
+		m_pAlarmGapSpin->setSuffix(QStringLiteral(" px"));
+		m_pAlarmGapSpin->setToolTip(QStringLiteral("测量等待弹窗可见时，告警弹窗顶部相对等待弹窗底部的额外间距"));
+
+		auto pForm = new QFormLayout();
+		pForm->addRow(QStringLiteral("水平偏移："), m_pAlarmOffsetXSpin);
+		pForm->addRow(QStringLiteral("顶部偏移（无等待弹窗）："), m_pAlarmOffsetYSpin);
+		pForm->addRow(QStringLiteral("与等待弹窗间距："), m_pAlarmGapSpin);
+
+		// 按钮区：预览 / 恢复默认 / 保存 / 关闭
+		auto pPreviewBtn = new QPushButton(QStringLiteral("预览"), m_pAlarmPosConfigDialog);
+		auto pResetBtn = new QPushButton(QStringLiteral("恢复默认"), m_pAlarmPosConfigDialog);
+		auto pSaveBtn = new QPushButton(QStringLiteral("保存到 Config"), m_pAlarmPosConfigDialog);
+		auto pCloseBtn = new QPushButton(QStringLiteral("关闭"), m_pAlarmPosConfigDialog);
+		pPreviewBtn->setToolTip(QStringLiteral("以当前参数弹出一个测试告警弹窗（预览不会保存到配置）"));
+		pResetBtn->setToolTip(QStringLiteral("将三个偏移恢复为默认值 0 / 16 / 8"));
+
+		auto pButtonLayout = new QHBoxLayout();
+		pButtonLayout->addWidget(pPreviewBtn);
+		pButtonLayout->addWidget(pResetBtn);
+		pButtonLayout->addWidget(pSaveBtn);
+		pButtonLayout->addWidget(pCloseBtn);
+
+		auto pMainLayout = new QVBoxLayout(m_pAlarmPosConfigDialog);
+		pMainLayout->addWidget(pTip);
+		pMainLayout->addLayout(pForm);
+		pMainLayout->addLayout(pButtonLayout);
+
+		// 实时应用:任一 SpinBox 值变化时写回配置并重排已显示的告警弹窗
+		auto fnApply = [this](int) {
+			if (m_pConfig == nullptr) return;
+			m_pConfig->m_memAlarmPopupConfig.m_nOffsetX = m_pAlarmOffsetXSpin->value();
+			m_pConfig->m_memAlarmPopupConfig.m_nOffsetY = m_pAlarmOffsetYSpin->value();
+			m_pConfig->m_memAlarmPopupConfig.m_nGapBelowWait = m_pAlarmGapSpin->value();
+			PositionAlarmPopup();
+		};
+		connect(m_pAlarmOffsetXSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, fnApply);
+		connect(m_pAlarmOffsetYSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, fnApply);
+		connect(m_pAlarmGapSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, fnApply);
+
+		// 预览:切换预览模式——同时弹出等待弹窗与告警弹窗,并循环刷新告警弹窗,便于实时观察两者相对位置
+		m_pAlarmPreviewBtn = pPreviewBtn;
+		connect(pPreviewBtn, &QPushButton::clicked, this, [this]() {
+			SetAlarmPreviewActive(!m_bAlarmPreviewActive);
+		});
+
+		// 恢复默认:写回默认值,会联动触发 valueChanged 从而实时生效
+		connect(pResetBtn, &QPushButton::clicked, this, [this]() {
+			m_pAlarmOffsetXSpin->setValue(0);
+			m_pAlarmOffsetYSpin->setValue(16);
+			m_pAlarmGapSpin->setValue(8);
+		});
+
+		// 保存到 Config.xml:当前 m_pConfig 内存值已是 SpinBox 实时同步后的值,直接落盘即可
+		connect(pSaveBtn, &QPushButton::clicked, this, [this]() {
+			if (m_pConfig->Write(WHSD_Tools::GetAbsolutePath("Config.xml")))
+			{
+				if (m_pDeviceLog)
+					m_pDeviceLog->WriteFormat("保存告警弹窗位置配置:X=%d, Y=%d, Gap=%d",
+						m_pConfig->m_memAlarmPopupConfig.m_nOffsetX,
+						m_pConfig->m_memAlarmPopupConfig.m_nOffsetY,
+						m_pConfig->m_memAlarmPopupConfig.m_nGapBelowWait);
+				QMessageBox::information(m_pAlarmPosConfigDialog, QStringLiteral("提示"),
+					QStringLiteral("已保存到 Config.xml"));
+			}
+			else
+			{
+				QMessageBox::warning(m_pAlarmPosConfigDialog, QStringLiteral("错误"),
+					QStringLiteral("保存到 Config.xml 失败"));
+			}
+		});
+
+		connect(pCloseBtn, &QPushButton::clicked, m_pAlarmPosConfigDialog, &QDialog::close);
+
+		// 对话框关闭(含右上角X与关闭按钮)时自动退出预览模式,避免等待弹窗遗留
+		connect(m_pAlarmPosConfigDialog, &QDialog::finished, this, [this](int) {
+			if (m_bAlarmPreviewActive)
+				SetAlarmPreviewActive(false);
+		});
+	}
+
+	// 每次打开时用当前配置回填 SpinBox(setValue 会触发 valueChanged 重新写回相同值,无副作用)
+	m_pAlarmOffsetXSpin->setValue(m_pConfig->m_memAlarmPopupConfig.m_nOffsetX);
+	m_pAlarmOffsetYSpin->setValue(m_pConfig->m_memAlarmPopupConfig.m_nOffsetY);
+	m_pAlarmGapSpin->setValue(m_pConfig->m_memAlarmPopupConfig.m_nGapBelowWait);
+
+	m_pAlarmPosConfigDialog->show();
+	m_pAlarmPosConfigDialog->raise();
+	m_pAlarmPosConfigDialog->activateWindow();
+}
+
+// 切换告警弹窗位置预览模式:同时弹等待弹窗与告警弹窗,循环刷新告警避开4秒自动隐藏,便于实时调位
+void Insulator_Zero_Value_Detection_Robot::SetAlarmPreviewActive(bool bActive)
+{
+	if (m_bAlarmPreviewActive == bActive)
+		return;
+	m_bAlarmPreviewActive = bActive;
+
+	// 同步预览按钮文本,提示当前可执行的动作
+	if (m_pAlarmPreviewBtn != nullptr)
+		m_pAlarmPreviewBtn->setText(bActive ? QStringLiteral("关闭预览") : QStringLiteral("预览"));
+
+	if (bActive)
+	{
+		// 开启预览:若等待弹窗尚未可见则由预览自己弹出(隐藏时需归位);已可见则保留(可能正在真实测量)
+		m_bAlarmPreviewOwnedWaitDialog = !(m_pMeasureWaitDialog != nullptr && m_pMeasureWaitDialog->isVisible());
+		if (m_bAlarmPreviewOwnedWaitDialog)
+			ShowMeasureWaitDialog(QStringLiteral("【预览】测量等待弹窗（预览模式）"));
+
+		// 立即弹一个告警弹窗,并启动循环刷新定时器(3.5s < 4s自动隐藏阈值,保证预览期间告警始终可见)
+		ShowAlarmPopup(eAlarmLevelWarning, QStringLiteral("【预览】告警弹窗位置预览"));
+		if (m_pAlarmPreviewTimer == nullptr)
+		{
+			m_pAlarmPreviewTimer = new QTimer(this);
+			m_pAlarmPreviewTimer->setInterval(3500);
+			connect(m_pAlarmPreviewTimer, &QTimer::timeout, this, [this]() {
+				if (m_bAlarmPreviewActive)
+					ShowAlarmPopup(eAlarmLevelWarning, QStringLiteral("【预览】告警弹窗位置预览"));
+				});
+		}
+		m_pAlarmPreviewTimer->start();
+	}
+	else
+	{
+		// 关闭预览:停定时器 + 隐藏告警弹窗 + 仅隐藏预览自己弹出的等待弹窗
+		if (m_pAlarmPreviewTimer != nullptr)
+			m_pAlarmPreviewTimer->stop();
+		if (m_pAlarmHideTimer != nullptr)
+			m_pAlarmHideTimer->stop();
+		if (m_pAlarmPopupLabel != nullptr)
+			m_pAlarmPopupLabel->hide();
+		// 双重守卫:预览拥有且当前无真实测量流程时才隐藏等待弹窗,避免误关真实测量中的弹窗
+		if (m_bAlarmPreviewOwnedWaitDialog && m_nMeasureStep == 0)
+			HideMeasureWaitDialog();
+		m_bAlarmPreviewOwnedWaitDialog = false;
+	}
 }
 
 void Insulator_Zero_Value_Detection_Robot::FilterTicketTable()

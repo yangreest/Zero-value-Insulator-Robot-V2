@@ -23,6 +23,8 @@
 
 class QDialog;
 class QKeyEvent;
+class QSpinBox;
+class QPushButton;
 
 class Insulator_Zero_Value_Detection_Robot : public QMainWindow
 {
@@ -282,7 +284,17 @@ private:
 	void ShowAlarmPopup(EAlarmLevel eLevel, const QString& strText);
 
 	// 计算告警弹窗位置:测量等待弹窗可见时下移到其下方,避免两者重叠;仅UI线程调用
+	// 水平偏移/顶部偏移/与等待弹窗间距均从 CAlarmPopupConfig 读取,支持运行时调优
 	void PositionAlarmPopup();
+
+	// 打开临时的"告警弹窗位置调整"对话框(快捷键 Ctrl+Shift+P):
+	// 支持实时修改水平/顶部/间距偏移并立即预览效果,可保存到 Config.xml
+	void ShowAlarmPopupPositionConfigDialog();
+
+	// 切换告警弹窗位置预览模式:
+	// 开启时同时弹出测量等待弹窗与告警弹窗,并循环刷新告警弹窗(避开4秒自动隐藏),便于观察两者相对位置;
+	// 关闭时仅隐藏预览自己弹出的等待弹窗(如果预览前已可见则保留),避免干扰真实测量流程
+	void SetAlarmPreviewActive(bool bActive);
 
 	// ===== 工单表维护 =====
 	// 重排工单表序号列(第0列文本),用于新增/删除后保持序号连续
@@ -398,6 +410,18 @@ private:
 	// 顶部告警弹窗及其自动消失定时器（懒创建，复用;新告警覆盖旧内容并重新计时）
 	QLabel* m_pAlarmPopupLabel = nullptr;
 	QTimer* m_pAlarmHideTimer = nullptr;
+
+	// 告警弹窗位置临时调整对话框及其输入控件（懒创建，复用;Ctrl+Shift+P 打开）
+	QDialog* m_pAlarmPosConfigDialog = nullptr;
+	QSpinBox* m_pAlarmOffsetXSpin = nullptr;
+	QSpinBox* m_pAlarmOffsetYSpin = nullptr;
+	QSpinBox* m_pAlarmGapSpin = nullptr;
+
+	// 告警弹窗预览模式状态：开启后同时弹出等待弹窗与告警弹窗，循环刷新告警便于实时调位
+	QPushButton* m_pAlarmPreviewBtn = nullptr;	// 预览按钮(文本随模式切换)
+	QTimer* m_pAlarmPreviewTimer = nullptr;		// 循环刷新告警弹窗的定时器
+	bool m_bAlarmPreviewActive = false;			// 当前是否处于预览模式
+	bool m_bAlarmPreviewOwnedWaitDialog = false;// 预览开启时等待弹窗是否由预览自己弹出(否则不能隐藏)
 
 	// OTA升级等待弹窗（懒创建，复用;升级期间不可关闭）
 	QDialog* m_pOtaWaitDialog = nullptr;
